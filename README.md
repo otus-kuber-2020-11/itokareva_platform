@@ -1,9 +1,10 @@
 # itokareva_platform
 itokareva Platform repository
+<details>
+  <summary>## Домашняя работа 1</summary>
 
-# Домашняя работа 1
-Настройка локального Настройка локального окружения. Запуск окружения. 
-Запуск первого контейнера. первого контейнера. Работа с kubectl 
+  ## Настройка локального Настройка локального окружения. Запуск окружения. 
+  ## Запуск первого контейнера. первого контейнера. Работа с kubectl 
 
 1) Установлен minikube и запущена виртуальная машина с кластером Kubernetes
 2) Создан Dockerﬁle:
@@ -33,9 +34,12 @@ itokareva Platform repository
    
    kube-apiserver - желаемое состояние хранится в etcd и поддерживается на уровне ОС(?). Не нашла исчерпывающей информации
 
-# Домашняя работа 2
+</details>
 
-  Kubernetes controllers. Kubernetes controllers. ReplicaSet, Deployment, ReplicaSet, Deployment, DaemonSet 
+<details>
+  <summary>## Домашняя работа 2</summary>
+
+  ## Kubernetes controllers. Kubernetes controllers. ReplicaSet, Deployment, ReplicaSet, Deployment, DaemonSet 
 
 1) Установлен kind и развернут k8s кластер по шаблону:
 
@@ -143,4 +147,21 @@ NOTE:
   An empty key with operator Exists matches all keys, values and effects which means this will tolerate everything.
 
 An empty effect matches all effects with key key1.
+
+</details>
+
+<details>
+  <summary>## Домашняя работа 3</summary>
+
+  ## Безопасность и управление доступом 
+
+  -  Решение задач task01, task02, task03 в  .yaml-файлах в одноименных каталогах.
+
+</details>
+
+
+
+
+
+
 
