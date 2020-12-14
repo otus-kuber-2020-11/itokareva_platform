@@ -1,0 +1,14 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dave
+subjects:
+- kind: ServiceAccount
+  name: dave
+  apiGroup: ""
+  namespace: default
+roleRef:
+   kind: Role
+   name: pod-admin
+   apiGroup: ""
+
