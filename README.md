@@ -24,7 +24,8 @@ itokareva Platform repository
    Задание со (*)
 9) Выяснена причина, по которой pod frontend находится в статусе Error: не объявлены переменные среды. 
    Исправлено в манифесте frontend-pod-healthy.yaml.  pod frontend - находится в статусе Running.
-  
+
+10)   
    Задание: Разберитесь почему все pod в namespace kube-system восстановились после удаления. 
 
    core-dns - восстанавливается, потому что kubernetes works in a declarative manner, which means we declare what the desired state should 
@@ -32,7 +33,34 @@ itokareva Platform repository
    required state by interacting with api-server and various controllers. So, it can also be treated as the interacting medium between 
    various controllers and api-server.
    
-   kube-apiserver - желаемое состояние хранится в etcd и поддерживается на уровне ОС(?). Не нашла исчерпывающей информации
+   kube-apiserver - желаемое состояние хранится в etcd. В локальном кластере используются статические поды.
+   Полная информация здесь: https://kubernetes.io/docs/tasks/configure-pod-container/static-pod/
+
+   В миникубе за всеми подами из plain panale присматривает kubelet. Заходим в VM minikube ssh и смотрим.
+   Сам kubelet запускается, как deamon.
+   ● kubelet.service - kubelet: The Kubernetes Node Agent
+   Loaded: loaded (/usr/lib/systemd/system/kubelet.service; disabled; vendor preset: enabled)
+  Drop-In: /etc/systemd/system/kubelet.service.d
+           └─10-kubeadm.conf
+   Active: active (running) since Wed 2020-12-16 16:53:07 UTC; 36min ago
+     Docs: http://kubernetes.io/docs/
+ Main PID: 2828 (kubelet)
+    Tasks: 21 (limit: 2363)
+   Memory: 113.9M
+   CGroup: /system.slice/kubelet.service
+           └─2828 /var/lib/minikube/binaries/v1.19.2/kubelet --bootstrap-kubeconfig=/etc/kubernetes/bootstrap-kubelet.conf --config=/var/lib/kubelet/config.yaml --container-runtime=docker --hostname-override=minikube --kubeconfig=/etc/kubernetes/kubelet.conf --node-ip=192.168.99.100
+
+
+   В конфиг-файле kubelet /etc/kubernetes/kubelet.conf прописан путь:
+
+   staticPodPath: /etc/kubernetes/manifests   
+ 
+   Здесь лежат статичиские yaml-файлы, которые kubelet использует для рестарта etcd, kube-apiserver, kube-controller-manager, kube-scheduler: 
+
+   $ ls /etc/kubernetes/manifests/
+etcd.yaml  kube-apiserver.yaml  kube-controller-manager.yaml  kube-scheduler.yaml
+
+   Сам kubelet рестартует VM.
 
 </details>
 
@@ -159,7 +187,167 @@ An empty effect matches all effects with key key1.
 
 </details>
 
+<details>
+  <summary>## Домашняя работа 4</summary>
 
+  ## Сетевая подсистема Kubernetes
+
+1) Создание Service
+   -  создание сервиса с типом ClusterIP 
+   -  разбор цепочек правил перенаправления трафика в iptables
+   -  включение IPVS для kube-proxy
+   -  исследоваие конфигурации через ipvsadm:
+
+   TCP  10.111.37.78:80 rr
+  -> 172.17.0.9:8000              Masq    1      0          0
+  -> 172.17.0.10:8000             Masq    1      0          0
+  -> 172.17.0.11:8000             Masq    1      0          0
+
+   Пинг к ClusterIP уже работает:
+$ ping -c1 10.111.37.78
+PING 10.111.37.78 (10.111.37.78): 56 data bytes
+64 bytes from 10.111.37.78: seq=0 ttl=64 time=1.835 ms 
+--- 10.111.37.78 ping statistics ---
+1 packets transmitted, 1 packets received, 0% packet loss
+round-trip min/avg/max = 1.835/1.835/1.835 ms
+   	 
+2) Установка MetalLB в Layer2-режиме 
+  
+   - установка MetalLB
+   - настройка балансировщика с помощью ConfigMap
+   - посмотр логов пода-контроллера MetalLB, чтобы увидеть как назначаются ip-адреса балансировщикам:
+
+{"caller":"service.go:114","event":"ipAllocated","ip":"172.17.255.1","msg":"IP address assigned by controller","service":"default/web-svc-lb","ts":"2020-12-17T19:49:48.676538589Z"}
+
+
+Name:                     web-svc-lb
+Namespace:                default
+Labels:                   <none>
+Annotations:              kubectl.kubernetes.io/last-applied-configuration:
+                            {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"web-svc-lb","namespace":"default"},"spec":{"ports":[{"port":80,"p...
+Selector:                 app=web
+Type:                     LoadBalancer
+IP:                       10.101.95.125
+LoadBalancer Ingress:     172.17.255.1
+Port:                     <unset>  80/TCP
+TargetPort:               8000/TCP
+NodePort:                 <unset>  30388/TCP
+Endpoints:                172.17.0.10:8000,172.17.0.11:8000,172.17.0.9:8000
+Session Affinity:         None
+External Traffic Policy:  Cluster
+Events:
+  Type    Reason        Age    From                Message
+  ----    ------        ----   ----                -------
+  Normal  IPAllocated   8m17s  metallb-controller  Assigned IP "172.17.255.1"
+  Normal  nodeAssigned  8m16s  metallb-speaker     announcing from node "minikube"
+
+   - проверка конфигурации:
+     
+     -  пробрасываем маршрут:
+        sudo ip route add 172.17.255.0/24 via 192.168.99.100 
+     - проверяем, что ссылка работает в браузере или через curl:
+        sudo ip route add 172.17.255.0/24 via 192.168.99.100 +
+        curl http://172.17.255.1/index.html
+
+   Задание со (*)
+
+   Создан сервис LoadBalancer , который открывает доступ к CoreDNS снаружи кластера (позволяет получать записи через внешний IP).
+   Сервис работает по протоколам TCP и UDP на одно ip-адресе балансировщика.
+   Использована аннотация: metallb.universe.tf/allow-shared-ip
+
+   kubectl get svc -n kube-system
+NAME             TYPE           CLUSTER-IP       EXTERNAL-IP    PORT(S)                  AGE
+kube-dns         ClusterIP      10.96.0.10       <none>         53/UDP,53/TCP,9153/TCP   88d
+metrics-server   ClusterIP      10.100.207.229   <none>         443/TCP                  86d
+svc-tcp          LoadBalancer   10.100.116.106   172.17.255.3   53:31902/TCP             21m
+svc-udp          LoadBalancer   10.111.239.29    172.17.255.3   53:32341/UDP             21m
+
+nslookup 172.17.0.25  172.17.255.3
+25.0.17.172.in-addr.arpa        name = 172-17-0-25.web-svc2.default.svc.cluster.local.
+
+default.svc.cluster.local svc.cluster.local cluster.local
+
+
+nslookup web-svc2.default.svc.cluster.local  172.17.255.3
+Server:         172.17.255.3
+Address:        172.17.255.3#53
+
+Name:   web-svc2.default.svc.cluster.local
+Address: 172.17.0.23
+Name:   web-svc2.default.svc.cluster.local
+Address: 172.17.0.24
+Name:   web-svc2.default.svc.cluster.local
+Address: 172.17.0.25
+   
+
+3) Установка Ingress-контроллера и прокси ingress-nginx
+   - установлен "коробочный" ingressnginx от проекта Kubernetes
+   - Создадан файл nginx-lb.yaml c конфигурацией LoadBalancer: MetalLB выдал 172.17.255.2 сервису.
+     curl 172.17.255.2
+<html>
+<head><title>404 Not Found</title></head>
+<body>
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx</center>
+</body>
+</html> 
+   - Создание Headless-сервиса:
+     ClusterIP для сервиса web-svc действительно не назначен 
+
+4) Создание правил Ingress
+
+   - настроен ingress-прокси: web-ingress.yaml
+
+kubectl describe ingress web
+Name:             web
+Namespace:        default
+Address:          192.168.99.100
+Default backend:  default-http-backend:80 (<none>)
+Rules:
+  Host  Path  Backends
+  ----  ----  --------
+  *
+        /web   web-svc:8000 (172.17.0.10:8000,172.17.0.11:8000,172.17.0.9:8000)
+Annotations:
+  nginx.ingress.kubernetes.io/rewrite-target:        /
+  kubectl.kubernetes.io/last-applied-configuration:  {"apiVersion":"networking.k8s.io/v1beta1","kind":"Ingress","metadata":{"annotations":{"nginx.ingress.kubernetes.io/rewrite-target":"/"},"name":"web","namespace":"default"},"spec":{"rules":[{"http":{"paths":[{"backend":{"serviceName":"web-svc","servicePort":8000},"path":"/web"}]}}]}}
+
+Events:
+  Type    Reason  Age                From                      Message
+  ----    ------  ----               ----                      -------
+q
+q
+  Normal  Sync    19s (x2 over 60s)  nginx-ingress-controller  Scheduled for sync
+
+   - проверка, что наша страничка доступна через браузер или через curl^
+curl 172.17.255.2/web/index.html
+<html>
+<head/>
+<body>
+<!-- IMAGE BEGINS HERE -->
+<font size="-3">
+<pre><font color=white>0111010011111011110010000111011000001110000110010011101000001100101
+011110010100111010001111101001011000001110110101110111001000110</font><br><font color=white
+>100100000010001110110001011101011100101101011111100110110110010011111110110110100100111101
+
+   Задание со (*) Ingress для Dashboard
+
+   Добавлен доступ к kubernetes-dashboard через наш Ingress-прокси:
+   сервис доступен через префикс /dashboard. 
+
+   Задание со (*) Canary для Ingress  
+
+   Реализовано канареечное развертывание с помощью ingress-nginx:
+   часть трафика перенаправляется на выделенную группу подов по HTTP-заголовку 
+   
+curl http://lb-ingress.local/web/index.html
+<html>
+<head/>
+<body>
+<!-- IMAGE BEGINS HERE -->
+<font size="-3">
+<pre><font color=white>011101001111101111001000011101100000111000011001
+</details>
 
 
 

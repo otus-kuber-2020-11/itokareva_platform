@@ -1,0 +1,37 @@
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: stage
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/canary: "true"
+    nginx.ingress.kubernetes.io/canary-by-header: always
+spec:
+  rules:
+  - host: lb-ingress.local
+    http:
+      paths:
+      - path: /web
+        backend:
+          serviceName: web-svc1
+          servicePort: 8000
+---
+apiVersion: networking.k8s.io/v1beta1
+kind: Ingress
+metadata:
+  name: prod
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/canary-by-header: never
+spec:
+  rules:
+  - host: lb-ingress.local
+    http:
+      paths:
+      - path: /web
+        backend:
+          serviceName: web-svc2
+          servicePort: 8000
+
