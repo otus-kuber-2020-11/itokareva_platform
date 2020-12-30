@@ -349,6 +349,22 @@ curl http://lb-ingress.local/web/index.html
 <pre><font color=white>011101001111101111001000011101100000111000011001
 </details>
 
+</details>
+
+<details>
+  <summary>## Домашняя работа 5</summary>
+
+  ## Хранение данных в Kubernetes.Volumes, Storages, Statefull-приложения
+
+В этом ДЗ мы развернем StatefulSet c MinIO  - локальным S3 хранилищем.
+
+Задание со (*) 
+
+В конфигурации нашего StatefulSet данные указаны в открытом виде, что не безопасно. Поместите данные в SECRETS  и настройте конфигурацию на их использование.
+Созданы новые файлы minio_secret.yaml и miniostatefulset.yaml.
+Запуститься под с MinIO - запустился с применением новой конфигурации.
+
+</details>
 
 
 
