@@ -367,5 +367,170 @@ curl http://lb-ingress.local/web/index.html
 </details>
 
 
+<details>
+  <summary>## Домашняя работа 6</summary>
+
+  ## Шаблонизация манифестов. Helm и его аналоги (Jsonnet, Kustomize)
+
+###1) Подготовительные работы
+
+-  развернут GKE кластер
+-  установка Helm 3 на локальную машину
+
+###2) Работа с helm. Развернтывание сервисов: 
+
+ - [сnginx-ingress](https://github.com/helm/charts/tree/master/stable/nginx-ingress) сервис, обеспечивающий доступ к публичным ресурсам кластера
+ - [cert-manager](https://github.com/jetstack/cert-manager/tree/master/deploy/charts/cert-manager) - сервис, позволяющий динамически генерировать Let's Encrypt сертификаты для ingress ресурсов
+ - [chartmuseum](https://github.com/helm/charts/tree/master/stable/chartmuseum) - специализированный репозиторий для хранения helm charts 
+ - [harbor](https://github.com/goharbor/harbor-helm) - хранилище артефактов общего назначения (Docker Registry), поддерживающее helm charts
+
+###3) Cert-manager. Самостоятельное задание. 
+
+-  Изучите [документацию](https://docs.cert-manager.io/en/latest/) cert-manager, и определите, что еще требуется установить для корректной работы
+-  Манифест дополнительно созданного ресурса clusterissuer размещена в kubernetes-templating/cert-manager/clusterissuer.yaml
+
+###4) Chartmuseum.
+
+-  произведена кастомизированная установка chartmuseum, параметры  размещены в kubernetes-templating/chartmuseum/values.yaml
+-  проверена успешность устаноки:
+a) Chartmuseum доступен по URL https://chartmuseum.<IP>.nip.io 
+b) Сертификат для данного URL валиден
+![screen1](kubernetes-templating/chartmuseum/chartmuseum.png)
+
+###5) Задание со (*)
+
+   * Научитесь работать с chartmuseum 
+   * Опишите последовательность действий, необходимых для добавления туда helm chart's и их установки с использованием chartmuseum как репозитория
+
+Воспользовалась [инструкцией](https://chartmuseum.com/docs/#uploading-a-chart-package)
+
+~~~sh
+cd kubernetes-templating/chartmuseum/prometheus
+helm package .
+curl --data-binary "@prometheus-11.12.1.tgz" https://chartmuseum.35.228.39.47.nip.io/api/charts 
+helm repo add chartmuseum https://chartmuseum.35.228.39.47.nip.io
+helm search repo prometheus
+NAME                                    CHART VERSION   APP VERSION     DESCRIPTION
+chartmuseum/prometheus                  11.12.1         2.20.1          DEPRECATED Prometheus is a monitoring system an...
+
+helm install prometheus chartmuseum/prometheus
+
+WARNING: This chart is deprecated
+NAME: prometheus
+LAST DEPLOYED: Sun Jan  3 23:58:15 2021
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+DEPRECATED and moved to <https://github.com/prometheus-community/helm-charts>The Prometheus server can be accessed via port 80 on the following DNS name from within your cluster:
+prometheus-server.default.svc.cluster.local
+helm delete prometheus
+~~~
+
+###6) harbor. Самостоятельное задание
+
+*  Установите harbor в кластер с использованием helm3 Используйте репозиторий  
+*  Используйте репозиторий  и CHART VERSION 1.1.2 
+Требования:
+
+*  Должен быть включен ingress и настроен host harbor.<IPадрес>.nip.io
+*  Должен быть включен TLS и выписан валидный сертификат
+
+-  Используемый файл используемый файл values.yaml размещен в директорию kubernetes-templating/harbor/
+-  Проверен критерий успешности ![screen1](kubernetes-templating/harbor/harbor.png)
+
+###7) Helmfile. Задание со (*)
+
+Опишите установку nginx-ingress, cert-manager и harbor в helmfile.
+Получившиеся файлы размещены в kubernetes-templating/helmfile
+Harbor установился, но не отрабатывает postsync hook для cert-manager и сайт работает но с инвалидным серификатом.
+Так же не получилось передать external-ip, который назначается nginx-ingress во время его создания.
+
+
+###8) Создаем свой helm chart 
+
+Используем [hipster-shop](https://github.com/GoogleCloudPlatform/microservices-demo) - демо-приложение , представляющее собой типичный набор микросервисов.
+
+-  изначально все сервисы создаются из одного манифеста kubernetes-templating/hipster-shop/all-hipstershop.yaml 
+-  вынесен микросервис frontend в директорию kubernetes-templating/frontend
+-  добавленя шаблонизация values.yaml для frontend
+-  добавлены зависимости для frontend для микросервисного приложения hipster-shop
+-  Задание со (*)
+   *  сервис Redis устанавливается, как зависимость с использованием bitnami community chart
+
+
+###8) Работа с helm-secrets 
+
+-  установлен плагин helm-secrets и необходимые для него зависимости 
+~~~sh
+sudo rpm --install sops-3.6.1-1.x86_64.rpm
+sudo dnf install gnupg2
+helm plugin install https://github.com/futuresimple/helm-secrets --version 2.0.2
+-----------------------
+gpg --full-generate-key
+sops -e -i --pgp 4993E121B5A4C5D8ECE4238F9797DC278078219B secrets.yaml
+gpg --export-secret-keys >~/.gnupg/secring.gpg
+cp -fs /run/user/1100/gnupg/S.gpg-agent /home/itokareva/.gnupg/
+helm secrets view secrets.yaml		
+~~~
+
+-  создан файл kubernetestemplating/frontend/templates/secret.yaml
+-  Теперь, если мы передадим в helm файл secrets.yaml как values файл - плагин helm-secrets поймет,
+ что его надо расшифровать, а значение ключа visibleKey подставить в соответствующий шаблон секрета.
+
+~~~sh
+helm secrets upgrade --install frontend kubernetes-templating/frontend --namespace hipster-shop \
+> -f kubernetes-templating/frontend/values.yaml \
+> -f kubernetes-templating/frontend/secrets.yaml
+Release "frontend" does not exist. Installing it now.
+NAME: frontend
+LAST DEPLOYED: Thu Jan  7 23:18:29 2021
+NAMESPACE: hipster-shop
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+removed 'kubernetes-templating/frontend/secrets.yaml.dec'
+~~~ 
+ 
+###9) Kubecfg
+
+Kubecfg предполагает хранение манифестов в файлах формата .jsonnet и их генерацию перед установкой. 
+Общая логика работы с использованием jsonnet следующая:
+. Пишем общий для сервисов , включающий описание service и deployment
+. [наследуемся](https://raw.githubusercontent.com/express42/otus-platform-snippets/master/Module-04/05-Templating/hipster-shop-jsonnet/payment-shipping.jsonnet) от него, указывая параметры для конкретных сервисов 
+
+-  вынесены манифесты, описывающие service и deployment для микросервисов paymentservice и shippingservice из файла all-hipster-shop.yaml
+ в директорию kubernetes-templating/kubecfg
+-  установлен kubecfg
+-  создан services.jsonnet
+-  библиотека services.jsonnet от bitnami немного подкорректирована
+-  проверка, что манифесты генерируются корректно:
+~~~sh
+kubecfg show services.jsonnet
+~~~
+-  установка манифестов:
+~~~sh
+kubecfg update services.jsonnet --namespace hipster-shop
+~~~
+
+###10) Kustomize | Самостоятельное задание
+
+-  отпилен микросервис cartservice от hipster-shop
+-  реализована установка в окружениях dev и prod
+-  результаты работы помещены в директорию kubernetestemplating/kustomize 
+-  установка на окружение dev работает так:
+
+~~~sh
+kubectl apply -k kubernetes-templating/kustomize/overlays/dev
+~~~
+
+
+
+
+
+
+
+
 
 
