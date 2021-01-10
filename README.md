@@ -372,24 +372,24 @@ curl http://lb-ingress.local/web/index.html
 
   ## Шаблонизация манифестов. Helm и его аналоги (Jsonnet, Kustomize)
 
-###1) Подготовительные работы
+1) Подготовительные работы
 
 -  развернут GKE кластер
 -  установка Helm 3 на локальную машину
 
-###2) Работа с helm. Развернтывание сервисов: 
+2) Работа с helm. Развернтывание сервисов: 
 
  - [сnginx-ingress](https://github.com/helm/charts/tree/master/stable/nginx-ingress) сервис, обеспечивающий доступ к публичным ресурсам кластера
  - [cert-manager](https://github.com/jetstack/cert-manager/tree/master/deploy/charts/cert-manager) - сервис, позволяющий динамически генерировать Let's Encrypt сертификаты для ingress ресурсов
  - [chartmuseum](https://github.com/helm/charts/tree/master/stable/chartmuseum) - специализированный репозиторий для хранения helm charts 
  - [harbor](https://github.com/goharbor/harbor-helm) - хранилище артефактов общего назначения (Docker Registry), поддерживающее helm charts
 
-###3) Cert-manager. Самостоятельное задание. 
+3) Cert-manager. Самостоятельное задание. 
 
 -  Изучите [документацию](https://docs.cert-manager.io/en/latest/) cert-manager, и определите, что еще требуется установить для корректной работы
 -  Манифест дополнительно созданного ресурса clusterissuer размещена в kubernetes-templating/cert-manager/clusterissuer.yaml
 
-###4) Chartmuseum.
+4) Chartmuseum.
 
 -  произведена кастомизированная установка chartmuseum, параметры  размещены в kubernetes-templating/chartmuseum/values.yaml
 -  проверена успешность устаноки:
@@ -397,7 +397,7 @@ a) Chartmuseum доступен по URL https://chartmuseum.<IP>.nip.io
 b) Сертификат для данного URL валиден
 ![screen1](kubernetes-templating/chartmuseum/chartmuseum.png)
 
-###5) Задание со (*)
+5) Задание со (*)
 
    * Научитесь работать с chartmuseum 
    * Опишите последовательность действий, необходимых для добавления туда helm chart's и их установки с использованием chartmuseum как репозитория
@@ -428,7 +428,7 @@ prometheus-server.default.svc.cluster.local
 helm delete prometheus
 ~~~
 
-###6) harbor. Самостоятельное задание
+6) harbor. Самостоятельное задание
 
 *  Установите harbor в кластер с использованием helm3 Используйте репозиторий  
 *  Используйте репозиторий  и CHART VERSION 1.1.2 
@@ -440,7 +440,7 @@ helm delete prometheus
 -  Используемый файл используемый файл values.yaml размещен в директорию kubernetes-templating/harbor/
 -  Проверен критерий успешности ![screen1](kubernetes-templating/harbor/harbor.png)
 
-###7) Helmfile. Задание со (*)
+7) Helmfile. Задание со (*)
 
 Опишите установку nginx-ingress, cert-manager и harbor в helmfile.
 Получившиеся файлы размещены в kubernetes-templating/helmfile
@@ -448,7 +448,7 @@ Harbor установился, но не отрабатывает postsync hook 
 Так же не получилось передать external-ip, который назначается nginx-ingress во время его создания.
 
 
-###8) Создаем свой helm chart 
+8) Создаем свой helm chart 
 
 Используем [hipster-shop](https://github.com/GoogleCloudPlatform/microservices-demo) - демо-приложение , представляющее собой типичный набор микросервисов.
 
@@ -460,7 +460,7 @@ Harbor установился, но не отрабатывает postsync hook 
    *  сервис Redis устанавливается, как зависимость с использованием bitnami community chart
 
 
-###8) Работа с helm-secrets 
+9) Работа с helm-secrets 
 
 -  установлен плагин helm-secrets и необходимые для него зависимости 
 ~~~sh
@@ -493,12 +493,12 @@ TEST SUITE: None
 removed 'kubernetes-templating/frontend/secrets.yaml.dec'
 ~~~ 
  
-###9) Kubecfg
+10) Kubecfg
 
 Kubecfg предполагает хранение манифестов в файлах формата .jsonnet и их генерацию перед установкой. 
 Общая логика работы с использованием jsonnet следующая:
-. Пишем общий для сервисов , включающий описание service и deployment
-. [наследуемся](https://raw.githubusercontent.com/express42/otus-platform-snippets/master/Module-04/05-Templating/hipster-shop-jsonnet/payment-shipping.jsonnet) от него, указывая параметры для конкретных сервисов 
+* Пишем общий для сервисов , включающий описание service и deployment
+* [наследуемся](https://raw.githubusercontent.com/express42/otus-platform-snippets/master/Module-04/05-Templating/hipster-shop-jsonnet/payment-shipping.jsonnet) от него, указывая параметры для конкретных сервисов 
 
 -  вынесены манифесты, описывающие service и deployment для микросервисов paymentservice и shippingservice из файла all-hipster-shop.yaml
  в директорию kubernetes-templating/kubecfg
@@ -514,7 +514,7 @@ kubecfg show services.jsonnet
 kubecfg update services.jsonnet --namespace hipster-shop
 ~~~
 
-###10) Kustomize | Самостоятельное задание
+11) Kustomize | Самостоятельное задание
 
 -  отпилен микросервис cartservice от hipster-shop
 -  реализована установка в окружениях dev и prod
@@ -525,12 +525,241 @@ kubecfg update services.jsonnet --namespace hipster-shop
 kubectl apply -k kubernetes-templating/kustomize/overlays/dev
 ~~~
 
+</details>
 
+<details>
+  <summary>## Домашняя работа 6</summary>
 
+  ##Custom Resource Definitions. Operators
 
+1) Cоздадим CustomResource mysql-instance
+2) Создали CustomResourceDefinition mysqls.otus.homework
+3) Добавлена валидация в спецификацию CRD
 
+##Операторы
 
+Оператор включает в себя CustomResourceDefinition и сustom сontroller
+- CRD содержит описание объектов CR
+- Контроллер следит за объектами определенного типа, и осуществляет всю логику работы оператора
 
+4) Создаем контроллер
+##Требование к созданию контроллера:
 
+4.1) При создании объекта типа ( kind: mySQL ), он будет:
+* Cоздавать PersistentVolume, PersistentVolumeClaim, Deployment, Service для mysql
+* Создавать PersistentVolume, PersistentVolumeClaim для бэкапов базы данных, если их еще нет.
+* Пытаться восстановиться из бэкапа
+4.2) При удалении объекта типа ( kind: mySQL ), он будет:
+* Cоздавать PersistentVolume, PersistentVolumeClaim, Deployment, Service для mysql
+* Создавать PersistentVolume, PersistentVolumeClaim для бэкапов базы данных, если их еще нет.
+* Пытаться восстановиться из бэкапа
+* Удалять все успешно завершенные backup-job и restore-job
+* Удалять PersistentVolume, PersistentVolumeClaim, Deployment, Service для mysql
 
+Потребовалось выполнить следующие подготовительные работы:
+
+~~~sh
+sudo dnf install  openssl-devel bzip2-devel libffi-devel
+cd /opt
+sudo wget https://www.python.org/ftp/python/3.7.9/Python-3.7.9.tgz
+sudo tar -xzf Python-3.7.9.tgz
+sudo rm Python-3.7.9.tgz
+cd Python-3.7.9/
+sudo ./configure --enable-optimizations
+sudo make altinstall
+/usr/local/bin/python3.7 -m pip install --upgrade pip
+pip3.7 install kopf
+pip3.7 install kubernetes
+pip3.7 install jinja2
+kopf run mysql-operator.py
+
+[2021-01-10 01:40:55,019] kopf.objects         [INFO    ] [default/mysql-instance] Handler 'mysql_on_create' succeeded.
+[2021-01-10 01:40:55,019] kopf.objects         [INFO    ] [default/mysql-instance] Creation event is processed: 1 succeeded; 0 failed.
+~~~
+
+В другом окне создаем cr mysql-instance и проверяем что deployment, service, pv и pvc создались:
+
+~~~sh
+$ kubectl apply -f deploy/crd.yaml
+customresourcedefinition.apiextensions.k8s.io/mysqls.otus.homework unchanged
+$ kubectl apply -f deploy/cr.yaml
+mysql.otus.homework/mysql-instance created
+$ kubectl get deployment.apps
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+mysql-instance   1/1     1            1           40s
+$ kubectl get svc
+NAME             TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)    AGE
+kubernetes       ClusterIP   10.96.0.1    <none>        443/TCP    108d
+mysql-instance   ClusterIP   None         <none>        3306/TCP   48s
+$ kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM                        STORAGECLASS   REASON   AGE
+mysql-instance-pv                          1Gi        RWO            Retain           Available                                                        52s
+pvc-4f192c3b-4be6-44ff-9c23-962e4fd9c9e8   1Gi        RWO            Delete           Bound       default/mysql-instance-pvc   standard                52s
+pvc-c141f591-03ac-437f-ad09-376716e36d3b   1Gi        RWO            Delete           Released    default/mysql-instance-pvc   standard                12h
+$ kubectl get pvc
+NAME                 STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+mysql-instance-pvc   Bound    pvc-4f192c3b-4be6-44ff-9c23-962e4fd9c9e8   1Gi        RWO            standard       59s
+~~~
+
+При удалении CustomResource mysql-instance: CR будет удален, но наш контроллер нe удалит ресуры, созданные контроллером,
+ т.к. обработки событий на удаление у нас нет.
+Для удаления ресурсов, сделаем deployment,svc,pv,pvc дочерними ресурсами к mysql.
+Теперь удалим cr mysql-instance и проверяем что deployment, service, pv и pvc уалились:
+
+~~~sh
+
+[2021-01-10 13:54:01,441] kopf.objects         [INFO    ] [default/mysql-instance] Handler 'mysql_on_create' succeeded.
+[2021-01-10 13:54:01,441] kopf.objects         [INFO    ] [default/mysql-instance] Creation event is processed: 1 succeeded; 0 failed.
+[2021-01-10 14:00:43,981] kopf.objects         [INFO    ] [default/mysql-instance] Handler 'delete_object_make_backup' succeeded.
+[2021-01-10 14:00:43,982] kopf.objects         [INFO    ] [default/mysql-instance] Deletion event is processed: 1 succeeded; 0 failed.
+~~~
+
+и в другом окне:
+
+~~~sh
+$ kubectl delete mysqls.otus.homework mysql-instance
+mysql.otus.homework "mysql-instance" deleted
+$ kubectl get deployment.apps
+No resources found.
+$ kubectl get svc
+NAME         TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   108d
+$ kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS     CLAIM                        STORAGECLASS   REASON   AGE
+pvc-c141f591-03ac-437f-ad09-376716e36d3b   1Gi        RWO            Delete           Released   default/mysql-instance-pvc   standard                12h
+[itokareva@otus kubernetes-operators]$ kubectl get pvc
+No resources found.
+~~~
+Реализуем остальные требования к контроллеру в части создания pv и pvc для backup и написания джобов на создание backup-ов и восстановление.
+После доработки контроллера проверяем, что pvc появились.
+	
+~~~sh
+$ kubectl get pvc
+NAME                        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+backup-mysql-instance-pvc   Bound    pvc-d771741c-06e4-4cb0-a88d-3d54fc2a9f47   1Gi        RWO            standard       26s
+mysql-instance-pvc          Bound    pvc-35b2608b-28d2-4867-84d9-02ec52ece864   1Gi        RWO            standard       27s
+$ kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM                               STORAGECLASS   REASON   AGE
+backup-mysql-instance-pv                   1Gi        RWO            Retain           Available                                                               31s
+mysql-instance-pv                          1Gi        RWO            Retain           Available                                                               31s
+pvc-35b2608b-28d2-4867-84d9-02ec52ece864   1Gi        RWO            Delete           Bound       default/mysql-instance-pvc          standard                31s
+pvc-c141f591-03ac-437f-ad09-376716e36d3b   1Gi        RWO            Delete           Released    default/mysql-instance-pvc          standard                14h
+pvc-d771741c-06e4-4cb0-a88d-3d54fc2a9f47   1Gi        RWO            Delete           Bound       default/backup-mysql-instance-pvc   standard                30s
+~~~
+
+5) Проверяем работу контроллера
+
+- создаем таблицу test в БД и заполняем ее
+
+~~~sh
+mysql> select * from test;
++----+-------------+
+| id | name        |
++----+-------------+
+|  1 | some data   |
+|  2 | some data-2 |
++----+-------------+
+2 rows in set (0.00 sec)
+~~~
+- удалим rc 
+
+~~~sh
+$ kubectl delete mysqls.otus.homework mysql-instance
+mysql.otus.homework "mysql-instance" deleted
+
+$ kubectl get mysqls.otus.homework mysql-instance
+Error from server (NotFound): mysqls.otus.homework "mysql-instance" not found
+$ kubectl get pvc
+NAME                        STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+backup-mysql-instance-pvc   Bound    pvc-d771741c-06e4-4cb0-a88d-3d54fc2a9f47   1Gi        RWO            standard       108m
+$ kubectl get pods
+NAME                              READY   STATUS      RESTARTS   AGE
+backup-mysql-instance-job-lk7md   0/1     Completed   0          74s
+
+$ kubectl get jobs.batch
+NAME                         COMPLETIONS   DURATION   AGE
+backup-mysql-instance-job    1/1           4s         7m40s
+restore-mysql-instance-job   0/1           84m        84m
+~~~
+
+- Создадим заново mysql-instance:
+
+~~~sh
+$ kubectl exec -it mysql-instance-6785949c48-p7nht /bin/sh
+#  mysql -u root -potuspassword otus-database
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Reading table information for completion of table and column names
+You can turn off this feature to get a quicker startup with -A
+
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 4
+Server version: 5.7.32 MySQL Community Server (GPL)
+
+Copyright (c) 2000, 2020, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> select * from test;
++----+-------------+
+| id | name        |
++----+-------------+
+|  1 | some data   |
+|  2 | some data-2 |
++----+-------------+
+2 rows in set (0.00 sec)
+
+mysql>
+~~~
+
+6) Собираем докер-образ с контроллером itokareva/mysql:1.0 и выкладываем его на dockerHub
+
+7) Деплой оператора
+
+- останавливаем контроллер
+- создаем deployment mysql-operator и применяем его
+- проверяем создание cr mysql-instance
+
+~~~sh
+$ kubectl apply -f ../deploy/cr.yaml
+mysql.otus.homework/mysql-instance created
+$ kubectl get mysqls.otus.homework mysql-instance
+NAME             AGE
+mysql-instance   79s
+
+$ kubectl get jobs.batch
+NAME                         COMPLETIONS   DURATION   AGE
+backup-mysql-instance-job    1/1           3s         9m32s
+restore-mysql-instance-job   1/1           52s        7m5s
+
+$ kubectl exec -ti mysql-instance-6785949c48-lzwmb /bin/sh
+#  mysql -u root -potuspassword otus-database
+mysql: [Warning] Using a password on the command line interface can be insecure.
+Welcome to the MySQL monitor.  Commands end with ; or \g.
+Your MySQL connection id is 2
+Server version: 5.7.32 MySQL Community Server (GPL)
+
+Copyright (c) 2000, 2020, Oracle and/or its affiliates. All rights reserved.
+
+Oracle is a registered trademark of Oracle Corporation and/or its
+affiliates. Other names may be trademarks of their respective
+owners.
+
+Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+
+mysql> select * from test;
+ERROR 1146 (42S02): Table 'otus-database.test' doesn't exist
+mysql> select * from test;
++----+-------------+
+| id | name        |
++----+-------------+
+|  1 | some data   |
+|  2 | some data-2 |
++----+-------------+
+2 rows in set (0.00 sec)
+
+~~~
 
