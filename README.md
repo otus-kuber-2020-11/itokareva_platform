@@ -528,7 +528,7 @@ kubectl apply -k kubernetes-templating/kustomize/overlays/dev
 </details>
 
 <details>
-  <summary>## Домашняя работа 6</summary>
+  <summary>## Домашняя работа 7</summary>
 
   ##Custom Resource Definitions. Operators
 
@@ -762,4 +762,5 @@ mysql> select * from test;
 2 rows in set (0.00 sec)
 
 ~~~
+</details>
 
