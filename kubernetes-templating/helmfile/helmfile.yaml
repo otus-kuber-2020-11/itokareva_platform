@@ -28,36 +28,29 @@ releases:
   wait: true
   timeout: 280
   <<: *template
-#- name: cert-manager1
-#  chart: jetstack/cert-manager
-#  namespace: cert-manager
-#  version: 0.16.1
-#  needs:
-#  - nginx-ingress/nginx-ingress
-#  labels:
-#    app: cert-manager
-#  wait: true
-#  timeout: 280
-#  hooks:
-#    # This hook adds the CRDs
+- name: cert-manager
+  chart: jetstack/cert-manager
+  namespace: cert-manager
+  version: 0.16.1
+  needs:
+  - nginx-ingress/nginx-ingress
+  labels:
+    app: cert-manager
+  wait: true
+  timeout: 280
+  values:
+    - installCRDs: true 
+  hooks:
+    # This hook adds the CRDs
 #    - events: ["presync"]
 #      showlogs: true
 #      command: "kubectl"
 #      args: ["apply", "--validate=false", "-f", "https://github.com/jetstack/cert-manager/releases/download/v0.16.1/cert-manager.crds.yaml"]
-#- name: cert-manager
-#  chart: jetstack/cert-manager
-#  namespace: cert-manager
-#  needs:
-#  - nginx-ingress/nginx-ingress
-#  version: 0.16.1
-#  labels:
-#    app: cert-manager
-#  hooks: 
-#    - events: ["postsync"]
-#      showlogs: true
-#      command: "kubectl"
-#      args: ["apply", "-f", "../cert-manager/clusterissuer.yaml", "-n", "cert-manager"]
-#  <<: *template
+    - events: ["postsync"]
+      showlogs: true
+      command: "kubectl"
+      args: ["apply", "-f", "../cert-manager/clusterissuer.yaml", "-n", "cert-manager"]
+  <<: *template
 - name: harbor
   chart: harbor/harbor
   namespace: harbor
@@ -66,7 +59,7 @@ releases:
     app: harbor
   needs:
   - nginx-ingress/nginx-ingress
-#  - cert-manager/cert-manager  
+  - cert-manager/cert-manager  
   hooks:
     # This hook adds the CRDs
     - events: ["prepare"]
