@@ -1,0 +1,27 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exporter
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: exporter
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1 
+      maxSurge: 100%
+  template:
+    metadata:
+      labels:
+        app: exporter 
+    spec:
+      containers:
+      - name: exporter 
+        image: itokareva/nginx-prometheus-exporter:1.0
+        args: [ "-nginx.scrape-uri", "http://web-svc/basic_status" ]
+        ports:
+        - name: exporter
+          containerPort: 9113  
