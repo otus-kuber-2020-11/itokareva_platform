@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: prom-monitor
+  labels:
+    prometheus: default
+spec:
+  selector:
+    matchLabels:
+      app: exporter 
+  endpoints:
+  - port: exporter
