@@ -1,0 +1,43 @@
+backend:
+  type: es
+  es:
+    host: elasticsearch-master
+rawConfig: |-
+  @INCLUDE fluent-bit-service.conf
+  @INCLUDE fluent-bit-input.conf
+  @INCLUDE fluent-bit-filter.conf
+  @INCLUDE fluent-bit-output.conf
+  [FILTER]
+      Name modify
+      Match *
+      Remove time
+      Remove @timestamp
+      Remove timestamp
+  [SERVICE]
+      Flush 1
+      Log_Level info
+      Parsers_File parsers.conf
+  [INPUT]
+      Name syslog
+      Path /tmp/in_syslog
+      Buffer_Chunk_Size 32000
+      Buffer_Max_Size 64000
+  [INPUT]
+      Name mem
+      Tag memory
+  [INPUT]
+      Name healthProm
+      Host kube-prometheus-stack-prometheus 
+      Port 9090
+      Interval_Sec 1
+      Interval_NSec 0
+  [INPUT]
+      Name healthProm
+      Host prometheus
+      Port 80
+      Interval_Sec 1
+      Interval_NSec 0
+  [OUTPUT]
+      Name stdout
+      Match *
+

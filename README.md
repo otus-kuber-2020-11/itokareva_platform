@@ -911,7 +911,311 @@ servicemonitors                                monitoring.coreos.com          tr
 
  5) Построен дашборд в графане с метриками nginx
 
- ![nginx-dashboard](kubernetes-monitoring/nginx_connections.png
+ ![nginx-dashboard](kubernetes-monitoring/nginx_connections.png)
 
 </details>
+
+<details>
+  <summary>## Домашняя работа 9</summary>
+
+  ##Сервисы централизованного логирования для компонентов Kubernetes и приложений
+
+1) Развернут кластер с помощью terraform. Скрипты для развертывания в каталоге kubernetes-logging/terraform
+	
+2) Установлено приложение hipster:
+kubectl create ns microservices-demo
+kubectl apply -f https://raw.githubusercontent.com/express42/otus-platformsnippets/master/Module-02/Logging/microservices-demo-without-resources.yaml -n
+microservices-demo
+3) Установлен EFK-стэк, prometheus, grafana, nginx-ingress, elasticsearch-exporter  с помощью helmfile:
+
+helmfile --selector name=nginx-ingress apply
+helmfile --selector name=kibana	 apply
+helmfile --selector name=elasticsearch apply
+helmfile --selector name=fluent-bit apply
+helmfile --selector name=kube-prometheus-stack apply
+helmfile --selector name=elasticsearch-exporter apply
+
+4) в графану залит популярный дашборд для мониторинга elasticsearch:
+
+![elasticsearch_dashboard_green](elasticsearch_dashboard_green.png) 
+    
+  Рассмотрены несколько метрик для мониторинга: 
+
+- unassigned_shards       - количество shard, для которых не нашлось 
+                            подходящей ноды, их наличие сигнализирует о проблемах
+- jvm_memory_usage        - высокая загрузка (в процентах от выделенной памяти) может привести к замедлению работы кластера
+- number_of_pending_tasks - количество задач, ожидающих выполнения.
+                            Значение метрики, отличное от нуля, может сигнализировать о наличии проблем внутри кластера
+
+  Больше метрик [здесь](https://habr.com/ru/company/yamoney/blog/358550/)
+
+5) Добиваемся, чтобы появились логи nginx-ingress в kibana:
+
+    serviceMonitor:
+      enabled: true
+
+6) Добиваемся, чтобы кроме логов писались и метрики:
+
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+7) Мы можем использовать полнотекстовый поиск, но лишены возможности: 
+
+   - Задействовать функции
+   - Полноценно проводить аналитику
+   - Создавать Dashboard по логам
+ 
+   Добиваемся, чтобы эта возможность появилась следующей настройкой:
+
+  config:
+    log-format-escape-json: "true"
+    log-format-upstream: '{"timestamp": "$time_iso8601",
+    "requestID": "$req_id",
+    "proxyUpstreamName": "$proxy_upstream_name",
+    "proxyAlternativeUpstreamName": "$proxy_alternative_upstream_name",
+    "upstreamStatus": "$upstream_status",
+    "upstreamAddr": "$upstream_addr",
+    "x-forward-for": "$proxy_add_x_forwarded_for",
+    "httpRequest":{"requestMethod": "$request_method", "requestUrl": "$host$request_uri",
+    "status": $status,"requestSize": "$request_length", "responseSize": "$upstream_response_length",
+    "userAgent": "$http_user_agent", "remoteIp": "$remote_addr", "referer": "$http_referer",
+    "latency": "$upstream_response_time s", "protocol":"$server_protocol"}}'
+8) Логи попадают в kibana  нужном нам формате:
+
+~~~sh
+{
+  "_index": "kubernetes_cluster-2021.01.21",
+  "_type": "flb_type",
+  "_id": "Un00J3cBnapfXRBRSQ8S",
+  "_version": 1,
+  "_score": null,
+  "_source": {
+    "@timestamp": "2021-01-21T23:07:53.093Z",
+    "log": "{\"timestamp\": \"2021-01-21T23:07:53+00:00\", \"requestID\": \"84dcb10280b68eae74ec7e295d3adee6\", \"proxyUpstreamName\": \"observability-kibana-kibana-5601\", \"proxyAlternativeUpstreamName\": \"\", \"upstreamStatus\": \"200\", \"upstreamAddr\": \"10.108.0.3:5601\", \"x-forward-for\": \"10.166.0.4\", \"httpRequest\":{\"requestMethod\": \"POST\", \"requestUrl\": \"kibana.35.228.112.27.xip.io/internal/search/ese/FmxLNENaTkVKUWtxZjRPU1pDZHZtNEEdX3A5dWhtS1VUTW10MXlpTHY2UjJiQToyMDM2NDk=\", \"status\": 200,\"requestSize\": \"1374\", \"responseSize\": \"3064\", \"userAgent\": \"Mozilla/5.0 (Windows NT 6.3; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0\", \"remoteIp\": \"10.166.0.4\", \"referer\": \"http://kibana.35.228.112.27.xip.io/app/discover\", \"latency\": \"0.044 s\", \"protocol\":\"HTTP/1.1\"}}\n",
+    "stream": "stdout",
+    "requestID": "84dcb10280b68eae74ec7e295d3adee6",
+    "proxyUpstreamName": "observability-kibana-kibana-5601",
+    "proxyAlternativeUpstreamName": "",
+    "upstreamStatus": "200",
+    "upstreamAddr": "10.108.0.3:5601",
+    "x-forward-for": "10.166.0.4",
+    "httpRequest": {
+      "requestMethod": "POST",
+      "requestUrl": "kibana.35.228.112.27.xip.io/internal/search/ese/FmxLNENaTkVKUWtxZjRPU1pDZHZtNEEdX3A5dWhtS1VUTW10MXlpTHY2UjJiQToyMDM2NDk=",
+      "status": 200,
+      "requestSize": "1374",
+      "responseSize": "3064",
+      "userAgent": "Mozilla/5.0 (Windows NT 6.3; Win64; x64; rv:84.0) Gecko/20100101 Firefox/84.0",
+      "remoteIp": "10.166.0.4",
+      "referer": "http://kibana.35.228.112.27.xip.io/app/discover",
+      "latency": "0.044 s",
+      "protocol": "HTTP/1.1"
+    },
+    "kubernetes": {
+      "pod_name": "nginx-ingress-controller-568bd996bf-2b468",
+      "namespace_name": "nginx-ingress",
+      "pod_id": "144fe111-38c5-4945-a9f5-7128b3e7a2fc",
+      "labels": {
+        "app": "nginx-ingress",
+        "app_kubernetes_io/component": "controller",
+        "component": "controller",
+        "pod-template-hash": "568bd996bf",
+        "release": "nginx-ingress"
+      },
+      "host": "gke-omega-default-pool-f0c3f949-fn7r",
+      "container_name": "nginx-ingress-controller",
+      "docker_id": "efc9306cecac3eec8fc595222849f47a0719afcbb4fe3f67fde69c78be375de0",
+      "container_hash": "0e072dddd1f7f8fc8909a2ca6f65e76c5f0d2fcfb8be47935ae3457e8bbceb20"
+    }
+  },
+  "fields": {
+    "@timestamp": [
+      "2021-01-21T23:07:53.093Z"
+    ]
+  },
+  "highlight": {
+    "kubernetes.labels.app": [
+      "@kibana-highlighted-field@nginx@/kibana-highlighted-field@-ingress"
+    ],
+    "kubernetes.container_name": [
+      "@kibana-highlighted-field@nginx@/kibana-highlighted-field@-ingress-controller"
+    ],
+    "kubernetes.pod_name": [
+      "@kibana-highlighted-field@nginx@/kibana-highlighted-field@-ingress-controller-568bd996bf-2b468"
+    ],
+    "kubernetes.labels.release": [
+      "@kibana-highlighted-field@nginx@/kibana-highlighted-field@-ingress"
+    ],
+    "kubernetes.namespace_name": [
+      "@kibana-highlighted-field@nginx@/kibana-highlighted-field@-ingress"
+    ]
+  },
+  "sort": [
+    1611270473093
+  ]
+}
+~~~
+
+9) Опробованы возможности kibana для визуализации: Visualize. Созданы визуализации для отображения запросов к
+   nginx-ingress со статусами:
+
+- 200-299
+- 300-399
+- 400-499
+- 500+
+
+10) Создан дашборд с созданными визуализациями и выгружен в формате json в kubernetes-logging/export.ndjson
+
+11) установлены loki с помощью helmfile:
+
+helmfile --selector name=loki apply
+
+12) создан дашборд в граафане, на котором одновременно выведем метрики nginx-ingress и его логи:
+
+    - созданы переменные: namespace, controller class, controller
+    - добавлена панель с графтком неуспешных запросов в разрезе инстансов nginx-ingress
+    - добавлена панель с графиком успешных запросов в разрезе сервисов (grafana, prometheus, kibana)
+    - добавлена панель с логами	 
+    - выгружен из Grafana JSON с финальным Dashboard и помесщен в файл kubernetes-logging/nginx-ingress.json
+![nginx-ingress_dashboards_and_logs](nginx-ingress_dashboards_and_logs.png)
+
+13) Задание со (*)
+ 
+    Для централизованного просмотра централизованного логов с виртуальных машин, на которых запущен Kubernetes в
+конфигурацию fluent-bit добавлены секции:
+
+  [INPUT]
+      Name syslog
+      Path /tmp/in_syslog
+      Buffer_Chunk_Size 32000
+      Buffer_Max_Size 64000
+  [INPUT]
+      Name mem
+      Tag memory
+
+    Пишутся логи такого типа:
+
+~~~sh
+Jan 26, 2021 @ 17:46:06.304
+
+log:
+    [2021/01/26 14:46:06] [ info] [input] pausing syslog.1 
+@timestamp:
+    Jan 26, 2021 @ 17:46:06.304
+stream:
+    stderr
+kubernetes.pod_name:
+    fluent-bit-lhn5g
+kubernetes.namespace_name:
+    observability
+kubernetes.pod_id:
+    8549dec8-1e5d-45ff-8a25-1dbb9a86e878
+kubernetes.labels.app:
+    fluent-bit
+kubernetes.labels.controller-revision-hash:
+    6fd958bb
+kubernetes.labels.pod-template-generation:
+    5
+kubernetes.labels.release:
+    fluent-bit
+kubernetes.annotations.checksum/config:
+    7782465e7df8adf15a2042b45128bfb1f6ea7e662387ce568c68659fd5d4c23e
+kubernetes.host:
+    gke-omega-infra-9b71ecbe-3rbt
+kubernetes.container_name:
+    fluent-bit
+kubernetes.docker_id:
+    05fadefcd28a67c8402ac86fdb36fbcd49c6ab5257ae3c90df39ca2d7d3bf5bf
+kubernetes.container_hash:
+    3ae8c4ee81c570155f2b37e024ad6922b89aea471ed4c07bd919e2656d758d93
+_id:
+    -xUoP3cBBd5omGi7sYNo
+_type:
+    flb_type
+_index:
+    kubernetes_cluster-2021.01.26
+_score:
+    - 
+~~~
+
+~~~sh
+{
+  "_index": "kubernetes_cluster-2021.01.26",
+  "_type": "flb_type",
+  "_id": "CRuDP3cBBd5omGi7Q8-s",
+  "_version": 1,
+  "_score": null,
+  "_source": {
+    "@timestamp": "2021-01-26T16:24:58.071Z",
+    "log": "[618] kube.var.log.containers.fluent-bit-ngmr2_observability_fluent-bit-b4233e9de4ba68d47739d5f22e2233fc7b7d63d377e7e11c398d0837b8165a5e.log: [1611678296.070027840, {\"log\"=>\"[591] kube.var.log.containers.fluent-bit-ngmr2_observability_fluent-bit-b4233e9de4ba68d47739d5f22e2233fc7b7d63d377e7e11c398d0837b8165a5e.log: [1611678295.041866822, {\"log\"=>\"[0] memory: [1611678295.000076125, {\"Mem.total\"=>7656544, \"Mem.used\"=>3786328, \"Mem.free\"=>3870216, \"Swap.total\"=>0, \"Swap.used\"=>0, \"Swap.free\"=>0}]\n",
+    "stream": "stdout",
+    "kubernetes": {
+      "pod_name": "fluent-bit-ngmr2",
+      "namespace_name": "observability",
+      "pod_id": "ce663e91-7a01-4557-b2d0-bcd19a510c61",
+      "labels": {
+        "app": "fluent-bit",
+        "controller-revision-hash": "66896b5464",
+        "pod-template-generation": "10",
+        "release": "fluent-bit"
+      },
+      "annotations": {
+        "checksum/config": "b82084ef45bb706cdde7e18488e4d98181e62abd51eb46c6388dfee642240a51"
+      },
+      "host": "gke-omega-infra-9b71ecbe-1ght",
+      "container_name": "fluent-bit",
+      "docker_id": "b4233e9de4ba68d47739d5f22e2233fc7b7d63d377e7e11c398d0837b8165a5e",
+      "container_hash": "3ae8c4ee81c570155f2b37e024ad6922b89aea471ed4c07bd919e2656d758d93"
+    }
+  },
+  "fields": {
+    "@timestamp": [
+      "2021-01-26T16:24:58.071Z"
+    ]
+  },
+  "highlight": {
+    "log": [
+      "[618] kube.var.log.containers.fluent-bit-ngmr2_observability_fluent-bit-b4233e9de4ba68d47739d5f22e2233fc7b7d63d377e7e11c398d0837b8165a5e.log: [1611678296.070027840, {\"log\"=>\"[591] kube.var.log.containers.fluent-bit-ngmr2_observability_fluent-bit-b4233e9de4ba68d47739d5f22e2233fc7b7d63d377e7e11c398d0837b8165a5e.log: [1611678295.041866822, {\"log\"=>\"[0] @kibana-highlighted-field@memory@/kibana-highlighted-field@: [1611678295.000076125, {\"Mem.total\"=>7656544, \"Mem.used\"=>3786328, \"Mem.free\"=>3870216, \"Swap.total\"=>0, \"Swap.used\"=>0, \"Swap.free\"=>0}]"
+    ]
+  },
+  "sort": [
+    1611678298071
+  ]
+}
+~~~
+    а так же для выполнения Health-check Prometheus и Grafana добавлена секция:
+
+  [INPUT]
+      Name healthGrafana
+      Host grafana
+      Port 80
+      Interval_Sec 1
+      Interval_NSec 0
+  [INPUT]
+      Name healthProm
+      Host prometheus
+      Port 80
+      Interval_Sec 1
+      Interval_NSec 0
+
+    Пишутся логи такоготипа:
+
+~~~sh
+[0] health.3: [1611676752.005641571, {"alive"=>true}]
+[0] health.4: [1611676752.005717856, {"alive"=>true}]
+[0] health.3: [1611676753.005669042, {"alive"=>true}]
+[0] health.4: [1611676753.005713119, {"alive"=>true}]
+[0] health.3: [1611676754.005435655, {"alive"=>true}]
+[0] health.4: [1611676754.005489831, {"alive"=>true}]
+[0] health.3: [1611676755.005106009, {"alive"=>true}]
+[0] health.4: [1611676755.005157471, {"alive"=>true}]
+[0] health.3: [1611676756.004872492, {"alive"=>true}]
+[0] health.4: [1611676756.004906487, {"alive"=>true}]
+~~~
+	
+</details>
+
 

@@ -1,0 +1,60 @@
+controller:
+  tolerations:
+  - key: nodeRole
+    operator: Equal
+    value: infra
+    effect: NoSchedule
+  nodeSelector:
+  cloud.google.com/gke-nodepool: infra
+  replicaCount: 3 
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "10254"
+
+      ## Deprecated, instead simply do not provide a clusterIP value
+      omitClusterIP: false
+      # clusterIP: ""
+
+      ## List of IP addresses at which the stats-exporter service is available
+      ## Ref: https://kubernetes.io/docs/user-guide/services/#external-ips
+      ##
+      externalIPs: []
+
+      loadBalancerIP: ""
+      loadBalancerSourceRanges: []
+      servicePort: 9913
+      type: ClusterIP
+
+    serviceMonitor:
+      enabled: true
+      additionalLabels: {}
+      namespace: ""
+      namespaceSelector: {}
+      # Default: scrape .Release.Namespace only
+      # To scrape all, use the following:
+      # namespaceSelector:
+      #   any: true
+      scrapeInterval: 30s
+      # honorLabels: true
+
+    prometheusRule:
+      enabled: false
+      additionalLabels: {}
+      namespace: ""
+  config:
+    log-format-escape-json: "true"
+    log-format-upstream: '{"timestamp": "$time_iso8601", 
+    "requestID": "$req_id", 
+    "proxyUpstreamName": "$proxy_upstream_name",
+    "proxyAlternativeUpstreamName": "$proxy_alternative_upstream_name",
+    "upstreamStatus": "$upstream_status",
+    "upstreamAddr": "$upstream_addr",
+    "x-forward-for": "$proxy_add_x_forwarded_for",
+    "httpRequest":{"requestMethod": "$request_method", "requestUrl": "$host$request_uri",
+    "status": $status,"requestSize": "$request_length", "responseSize": "$upstream_response_length",
+    "userAgent": "$http_user_agent", "remoteIp": "$remote_addr", "referer": "$http_referer",
+    "latency": "$upstream_response_time s", "protocol":"$server_protocol"}}'
+     
