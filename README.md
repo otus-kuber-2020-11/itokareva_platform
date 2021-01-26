@@ -937,7 +937,7 @@ helmfile --selector name=elasticsearch-exporter apply
 
 4) в графану залит популярный дашборд для мониторинга elasticsearch:
 
-![elasticsearch_dashboard_green](elasticsearch_dashboard_green.png) 
+![elasticsearch_dashboard_green](kubernetes-logging/elasticsearch_dashboard_green.png) 
     
   Рассмотрены несколько метрик для мониторинга: 
 
@@ -956,12 +956,15 @@ helmfile --selector name=elasticsearch-exporter apply
 
 6) Добиваемся, чтобы кроме логов писались и метрики:
 
+~~~sh
   metrics:
     enabled: true
     service:
       annotations:
         prometheus.io/scrape: "true"
         prometheus.io/port: "10254"
+~~~	
+	
 7) Мы можем использовать полнотекстовый поиск, но лишены возможности: 
 
    - Задействовать функции
@@ -970,6 +973,7 @@ helmfile --selector name=elasticsearch-exporter apply
  
    Добиваемся, чтобы эта возможность появилась следующей настройкой:
 
+~~~sh
   config:
     log-format-escape-json: "true"
     log-format-upstream: '{"timestamp": "$time_iso8601",
@@ -983,6 +987,8 @@ helmfile --selector name=elasticsearch-exporter apply
     "status": $status,"requestSize": "$request_length", "responseSize": "$upstream_response_length",
     "userAgent": "$http_user_agent", "remoteIp": "$remote_addr", "referer": "$http_referer",
     "latency": "$upstream_response_time s", "protocol":"$server_protocol"}}'
+~~~
+
 8) Логи попадают в kibana  нужном нам формате:
 
 ~~~sh
@@ -1080,13 +1086,14 @@ helmfile --selector name=loki apply
     - добавлена панель с графиком успешных запросов в разрезе сервисов (grafana, prometheus, kibana)
     - добавлена панель с логами	 
     - выгружен из Grafana JSON с финальным Dashboard и помесщен в файл kubernetes-logging/nginx-ingress.json
-![nginx-ingress_dashboards_and_logs](nginx-ingress_dashboards_and_logs.png)
+![nginx-ingress_dashboards_and_logs](kubernetes-logging/nginx-ingress_dashboards_and_logs.png)
 
 13) Задание со (*)
  
     Для централизованного просмотра централизованного логов с виртуальных машин, на которых запущен Kubernetes в
 конфигурацию fluent-bit добавлены секции:
 
+~~~sh
   [INPUT]
       Name syslog
       Path /tmp/in_syslog
@@ -1095,6 +1102,7 @@ helmfile --selector name=loki apply
   [INPUT]
       Name mem
       Tag memory
+~~~
     Пишутся логи такого типа:
 
 ~~~sh
@@ -1186,6 +1194,7 @@ _score:
 }
 ~~~
     а так же для выполнения Health-check Prometheus и Grafana добавлена секция:
+~~~sh
   [INPUT]
       Name healthGrafana
       Host grafana
@@ -1198,6 +1207,7 @@ _score:
       Port 80
       Interval_Sec 1
       Interval_NSec 0
+~~~
     Пишутся логи такоготипа:
 
 ~~~sh
@@ -1214,5 +1224,4 @@ _score:
 ~~~
 	
 </details>
-
 
