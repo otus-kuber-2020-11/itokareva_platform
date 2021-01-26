@@ -1,0 +1,21 @@
+es:
+  uri: http://elasticsearch-master:9200
+serviceMonitor:
+  enabled: true
+#tolerations:
+#- key: nodeRole
+#  operator: Equal
+#  value: infra
+#  effect: NoSchedule
+nodeSelector:
+  cloud.google.com/gke-nodepool: monitoring
+#prometheusRule:
+#rules:
+#- alert: ElasticsearchTooFewNodesRunning
+#  expr: elasticsearch_cluster_health_number_of_nodes < 3
+#  for: 5m
+#  labels:
+#    severity: critical
+#  annotations:
+#    description: There are only {{$value}} < 3 ElasticSearch nodes running
+#    summary: ElasticSearch running on less than 3 nodes
