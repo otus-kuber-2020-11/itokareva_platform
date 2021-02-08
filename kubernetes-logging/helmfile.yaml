@@ -1,0 +1,82 @@
+environments:
+  develop:
+    values:
+      - domain: harbor.{{ env "SERVICE_IP" }}.nip.io 
+  production:
+    values:
+      - domain: IP.xip.io
+
+repositories:
+- name: stable
+  url: https://charts.helm.sh/stable
+- name: elastic
+  url: https://helm.elastic.co
+- name: prometheus-community
+  url: https://prometheus-community.github.io/helm-charts
+- name: loki
+  url: https://grafana.github.io/loki/charts
+
+templates:
+  template: &template
+    missingFileHandler: Info
+    values:
+    - ./{{`{{ .Release.Name }}`}}.values.yaml
+
+releases:
+- name: nginx-ingress 
+  chart: stable/nginx-ingress
+  namespace: nginx-ingress
+  version: 1.41.3
+  labels:
+    app: nginx-ingress
+  wait: true
+  timeout: 280
+  <<: *template
+- name: elasticsearch
+  chart: elastic/elasticsearch
+  namespace: observability
+#  version: 8.0.0-SNAPSHOT 
+  labels:
+    app: elastic
+  <<: *template
+- name: kibana 	
+  chart: elastic/kibana
+  namespace: observability
+#  version: 8.0.0-SNAPSHOT
+  labels:
+    app: elastic
+  <<: *template
+- name: fluent-bit
+  chart: stable/fluent-bit
+  namespace: observability
+  labels:
+    app: fluent-bit 
+  <<: *template
+- name: kube-prometheus-stack
+  chart: prometheus-community/kube-prometheus-stack
+  version: 12.12.1
+  namespace: observability
+  labels:
+    app: kube-prometheus-stack
+  needs:
+  - nginx-ingress/nginx-ingress
+  <<: *template
+- name: elasticsearch-exporter
+  chart: stable/elasticsearch-exporter
+  namespace: observability
+  labels:
+    app: elasticsearch-exporter 
+  needs:
+  - nginx-ingress/nginx-ingress
+  - observability/kube-prometheus-stack
+  - observability/elasticsearch
+  <<: *template
+- name: loki
+  chart: loki/loki-stack
+  version: 0.25.1
+  namespace: observability
+  labels:
+    app: loki
+  needs:
+  - nginx-ingress/nginx-ingress
+  <<: *template
