@@ -1221,7 +1221,7 @@ _score:
 <details>
   <summary>## Домашняя работа 10</summary>
 
-  ##GitOps и инструменты поставки
+## GitOps и инструменты поставки
  
 ## GitOps. Flux
 
