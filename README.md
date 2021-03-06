@@ -1225,9 +1225,13 @@ _score:
  
 ## GitOps. Flux
 
-1)
-  Поместили манифест, описывающий namespace microservices-demo в
-  директорию deploy/namespaces и сделали push в GitLab. 
+1) В качестве хранилища кода и CI-системы в домашнем задании мы будем использовать SaaS GitLab. 
+2) После этого создадим в GitLab публичный проект microservicesdemo.
+3) Подготовили Helm чарты для каждого микросервиса deploy/charts.
+4) Тарраформом развернут kubernetes-кластер в GCP.
+5) Собрали Docker образы для всех микросервиса и поместили данные образы в Docker Hub.
+6) Flux, Helm operator установлены с помощью helmfile.
+7) Поместили манифест, описывающий namespace microservices-demo в директорию deploy/namespaces и сделали push в GitLab. 
   В кластере создался namespace microservices-demo, а в логах pod с flux должна появилась строка, описывающая
   действия данного инструмента:
 
@@ -1236,7 +1240,7 @@ ts=2021-02-04T06:55:16.442764981Z caller=sync.go:61 component=daemon info="tryin
 ts=2021-02-04T06:55:17.91597765Z caller=sync.go:540 method=Sync cmd=apply args= count=1
 ts=2021-02-04T06:55:18.575418201Z caller=sync.go:606 method=Sync cmd="kubectl apply -f -" took=659.344812ms err=null output="namespace/microservices-demo created"
 ~~~
-2) Создали сущность, которой управляет helm-operator - HelmRelease. Это frontend.yaml с описанием конфигурации релиза.
+8) Создали сущность, которой управляет helm-operator - HelmRelease. Это frontend.yaml с описанием конфигурации релиза.
    Поместили его в deploy/releases. После выполнения push gitlab master видим, что наш release frontend не может выполнить sync в кластер:
 
 ~~~sh
@@ -1294,9 +1298,9 @@ Waiting for 7679592 to be applied ...
 Done.
 ~~~
 
-3) Пересобран образ с инкрементацией версии тега до v0.0.2. Релиз автоматически обновился в кластере. 
+9) Пересобран образ с инкрементацией версии тега до v0.0.2. Релиз автоматически обновился в кластере. 
 
-![frontend_v0.0.2](frontend_v0.0.2.png)
+![frontend_v0.0.2](kubernetes-gitops/frontend_v0.0.2.png)
 
   Для просмотра ревизий релиза можно использовать команду:
 
@@ -1309,10 +1313,10 @@ REVISION        UPDATED                         STATUS          CHART           
 
    В git-репозитории тоже видим, что тэг изменился на v0.0.2.
 
-![commit](commit.png)
-![gitlab_frontend](gitlab_frontend.png) 
+![commit](kubernetes-gitops/commit.png)
+![gitlab_frontend](kubernetes-gitops/gitlab_frontend.png) 
 
-4) Попробуем внести изменения в Helm chart frontend и поменять имя deployment на frontend-hipster. 
+10) Попробуем внести изменения в Helm chart frontend и поменять имя deployment на frontend-hipster. 
    После применения push в GitLab в логе helm-operator видим, что создан новый Deployment called \"frontend-hipster\" in microservices-demo.
 
 ~~~sh
@@ -1344,17 +1348,17 @@ ts=2021-02-06T11:38:05.043351507Z caller=helm.go:69 component=helm version=v3 in
 ts=2021-02-06T11:38:05.123770534Z caller=helm.go:69 component=helm version=v3 info="dry run for frontend" targetNamespace=microservices-demo release=frontend
 ts=2021-02-06T11:38:05.143749332Z caller=release.go:311 component=release release=frontend targetNamespace=microservices-demo resource=microservices-demo:helmrelease/frontend helmVersion=v3 info="no changes" phase=dry-run-compare
 ~~~
-5) Добавили манифесты HelmRelease для всех микросервисов входящих в состав HipsterShop.
+11) Добавили манифесты HelmRelease для всех микросервисов входящих в состав HipsterShop.
    Все микросервисы кроме loadgenerator успешно развернулись в Kubernetes кластере.
-![k8s-microservices-demo](k8s-microservices-demo.png)
+![k8s-microservices-demo](kubernetes-gitops/k8s-microservices-demo.png)
 
 ## Canary deployments с Flagger и Istio
 
 1) Установили flagger через helmfile
-3) Установили istio через GKE add-on
-4) Изменено созданное ранее описание namespace microservices-demo, как istio-injection: enabled
-5) Самый простой способ добавить sidecar контейнер в уже запущенные pod - удалить их
-6) После этого можно проверить, что контейнер с названием istioproxy появился внутри каждого pod
+2) Установили istio через GKE add-on
+3) Изменено созданное ранее описание namespace microservices-demo, как istio-injection: enabled
+4) Самый простой способ добавить sidecar контейнер в уже запущенные pod - удалить их
+5) После этого можно проверить, что контейнер с названием istioproxy появился внутри каждого pod
 
 ~~~sh
 $ kubectl delete pods --all -n microservices-demo
@@ -1364,7 +1368,7 @@ microservices-demo   Active   3d14h   fluxcd.io/sync-gc-mark=sha256.Hs9UhrkDHGgP
 ~~~ 
 
 <details>
-  <summary>## Контейнер с названием istio-proxy появился внутри каждого pod</summary>
+  <summary> Контейнер с названием istio-proxy появился внутри каждого pod</summary>
 
 ~~~sh
 $ kubectl describe pod -l app=frontend -n microservices-demo
@@ -1567,12 +1571,12 @@ Events:
 
 </details>
 
-5) Чтобы настроить маршрутизацию трафика к приложению с использованием Istio, нам необходимо добавить ресурсы Gateway и VirtualService.
+6) Чтобы настроить маршрутизацию трафика к приложению с использованием Istio, нам необходимо добавить ресурсы Gateway и VirtualService.
    Дополнили наш Helm chart frontend манифестами gateway.yaml и virtualService.yaml. 
-6) Добавили в Helm chart frontend еще один файл - canary.yaml. В нем будем хранить описание стратегии, по которой необходимо
+7) Добавили в Helm chart frontend еще один файл - canary.yaml. В нем будем хранить описание стратегии, по которой необходимо
 обновлять данный микросервис.
-[Узнать подробнее о Canary Custom Resource можно по ссылке](https://docs.flagger.app/how-it-works#canary-custom-resource)
-7) Проверим, что Flagger Успешно инициализировал canary ресурс frontend:
+Узнать подробнее о Canary Custom Resource можно по [ссылке](https://docs.flagger.app/how-it-works#canary-custom-resource)
+8) Проверим, что Flagger Успешно инициализировал canary ресурс frontend:
 ~~~sh
 $ kubectl get canary -n microservices-demo
 NAME       STATUS        WEIGHT   LASTTRANSITIONTIME
@@ -1584,19 +1588,23 @@ $ kubectl get pods -n microservices-demo -l app=frontend-primary
 NAME                                READY   STATUS    RESTARTS   AGE
 frontend-primary-6498d4c8d9-6xs52   2/2     Running   0          19m
 ~~~
-8) Попробуем провести релиз. Соберали новый образ frontend с тегом v0.0.3 и сделали push в Docker Hub.
+
+9) Попробуем провести релиз. Соберали новый образ frontend с тегом v0.0.3 и сделали push в Docker Hub.
    Релиз в GitLab обновился, но в кластере версия образа frontend не изменилась. Канарейка не запустилась.
 
    Flagger для старта канарейки использует prometheus, но он не был установлен GKE add-on-ом.
    Аддон установил 1.4.10 версию istio, поэтому был выполнен [Download the Istio release.](https://istio.io/latest/docs/setup/getting-started/#download) 
+   
 ~~~sh
 curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.4.10 TARGET_ARCH=x86_64 sh -
 istioctl install --set profile=demo -y
 ~~~
    istioctl установил prometheus, но канарейка так и не взлетела и релиз так и не ушел в кластер.
-   Чтобы посмотреть метрики в prometheus и найти нужную нам [request-success-rate] (https://docs.flagger.app/usage/how-it-works#canary-custom-resource)  
-   был создан GateWay и VirtualService для prometheus [Remotely Accessing Telemetry Addons](https://istio.io/latest/docs/tasks/observability/gateways/#option-2-insecure-access-http)
+   
+   Чтобы посмотреть метрики в prometheus и найти нужную нам request-success-rate был создан GateWay и VirtualService для prometheus:
+   [Remotely Accessing Telemetry Addons](https://istio.io/latest/docs/tasks/observability/gateways/#option-2-insecure-access-http)
    п.3 Apply the following configuration to expose Prometheus.
+   [canary-custom-resource](https://docs.flagger.app/usage/how-it-works#canary-custom-resource)  
 ~~~sh
 export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 export INGRESS_DOMAIN=${INGRESS_HOST}.nip.io
@@ -1649,10 +1657,13 @@ spec:
       mode: DISABLE
 ~~~  
   
-   [Заходим в prometheus по ссылке:] (http://prometheus.35.228.114.139.nip.io/)
+   [Заходим в prometheus по ссылке](http://prometheus.35.228.114.139.nip.io/)
+   
    Метрики request-success-rate в prometheus так и не нашлось.
-   Откатила istio аддон в ui google cloud. Подняла версию GKE до 1.17.17-gke.1100 (требование при установке Istio 1.9)
-   Установила Istio 1.9.
+   - Откатила istio аддон в ui google cloud.
+   - Подняла версию GKE до 1.17.17-gke.1100 (требование при установке Istio 1.9)
+   - Установила Istio 1.9.
+   
 ~~~sh 
 curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.9.0 TARGET_ARCH=x86_64 sh -
 cd istio-1.9.1
@@ -1666,9 +1677,11 @@ kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.9/sampl
 ~~~
 [Prometheus](https://istio.io/latest/docs/ops/integrations/prometheus/#Configuration)
 	  
-Метрики request-success-rate так и не нашлось. Прочитала в документации о том, какие метрики ставятся вместе с Istio.
-[Istio Standard Metrics](https://istio.io/latest/docs/reference/config/metrics/)
-![Все они присутствуют в прометее] (Istio_Standard_Metrics.png)
+Метрики request-success-rate так и не нашлось. По документации вместе с Istio ставятся [Istio Standard Metrics](https://istio.io/latest/docs/reference/config/metrics/)
+
+Все они присутствуют в прометее:
+
+![Все они присутствуют в прометее](kubernetes-gitops/Istio_Standard_Metrics.png)
 
 Обранилась к рекомендации:
 "Рекомендуется обратить внимание на Helm chart loadgenerator и
@@ -1676,12 +1689,12 @@ kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.9/sampl
 генерировалась на внешний, по отношению к кластеру, URL (тем
 самым - создав имитацию реального поведения пользователей)"
 
-Внесла в параметры адрес нашего frontend (https://gitlab.com/otus_hw/microservices-demo/-/blob/master/deploy/charts/loadgenerator/values.yaml).
+Внесла в параметры адрес нашего [frontend](https://gitlab.com/otus_hw/microservices-demo/-/blob/master/deploy/charts/loadgenerator/values.yaml).
 Сервис loadgenerator успешно поднялся. И стал имитировать работу пользователей. Это важно для работы канарейки: сервис должин быть "живым",
 так как наша метрика проверяет количество успешных запросов.
 
 После всего проделанного выполнила rebuild frontend v.0.0.4. 
-Сначала обновилась версия [релиза] (https://gitlab.com/otus_hw/microservices-demo/-/blob/master/deploy/releases/frontend.yaml)
+Сначала обновилась версия [релиза](https://gitlab.com/otus_hw/microservices-demo/-/blob/master/deploy/releases/frontend.yaml)
 Затем отработала канарейка и обновила версию сервиса в кластере:
 
 ~~~sh
@@ -1759,11 +1772,16 @@ Events:
     threshold: 5
     maxWeight: 30
 
-График из прометея с метриками, который пришли вместе с Flagger: ![flagger_canary_status](flagger_canary_status.png)
+График из прометея с метриками, который пришли вместе с Flagger: ![flagger_canary_status](kubernetes-gitops/flagger_canary_status.png)
 
-Вывод: метрика, которую я так и не нашла в прометее и с которой работает канарейка скорее всего смерженная метрика Istio и приложения.
-[metrics-merging](https://istio.io/latest/docs/ops/integrations/prometheus/#option-1-metrics-merging)
-Envoy sidecar will merge Istio’s metrics with the application metrics. The merged metrics will be scraped from /stats/prometheus:15020 
+  Вывод:
+  
+  метрика, которую я так и не нашла в прометее и с которой работает канарейка скорее всего смерженная метрика Istio и приложения.						
+  "Envoy sidecar will merge Istio’s metrics with the application metrics. The merged metrics will be scraped from /stats/prometheus:15020" 
+
+  [metrics-merging](https://istio.io/latest/docs/ops/integrations/prometheus/#option-1-metrics-merging)
+
+
 
 </details> 
 
