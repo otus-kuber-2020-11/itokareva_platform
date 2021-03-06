@@ -1218,4 +1218,552 @@ _score:
 	
 </details>
 
+<details>
+  <summary>## Домашняя работа 10</summary>
+
+  ##GitOps и инструменты поставки
+ 
+## GitOps. Flux
+
+1)
+  Поместили манифест, описывающий namespace microservices-demo в
+  директорию deploy/namespaces и сделали push в GitLab. 
+  В кластере создался namespace microservices-demo, а в логах pod с flux должна появилась строка, описывающая
+  действия данного инструмента:
+
+~~~sh
+ts=2021-02-04T06:55:16.442764981Z caller=sync.go:61 component=daemon info="trying to sync git changes to the cluster" old= new=538532af11dae6f915fcf23cc98274e2628d0352
+ts=2021-02-04T06:55:17.91597765Z caller=sync.go:540 method=Sync cmd=apply args= count=1
+ts=2021-02-04T06:55:18.575418201Z caller=sync.go:606 method=Sync cmd="kubectl apply -f -" took=659.344812ms err=null output="namespace/microservices-demo created"
+~~~
+2) Создали сущность, которой управляет helm-operator - HelmRelease. Это frontend.yaml с описанием конфигурации релиза.
+   Поместили его в deploy/releases. После выполнения push gitlab master видим, что наш release frontend не может выполнить sync в кластер:
+
+~~~sh
+  Warning  FailedReleaseSync  12m                  helm-operator  synchronization of release 'frontend' in namespace 'microservices-demo' failed: failed to prepare chart for release: chart not ready: no existing git mirror found
+  Warning  FailedReleaseSync  12m                  helm-operator  synchronization of release 'frontend' in namespace 'microservices-demo' failed: failed to prepare chart for release: chart not ready: git repo has not been cloned yet
+  Warning  FailedReleaseSync  2m8s (x20 over 12m)  helm-operator  synchronization of release 'frontend' in namespace 'microservices-demo' failed: installation failed: unable to build kubernetes objects from release manifest: unable to recognize "": no matches for kind "ServiceMonitor" in version "monitoring.coreos.com/v1"
+~~~
+
+это потому что, в репозитории gitlab microservices-demo/deploy/charts/frontend/templates/serviceMonitor.yaml описывает kind: ServiceMonitor, для которого нет crd.
+
+~~~sh
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: frontend
+  labels:
+    app: frontend
+spec:
+  selector:
+    matchLabels:
+      app: frontend
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  endpoints:
+  - port: http
+~~~ 
+   Создадим его.
+
+~~~sh
+kubectl apply -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.45.0/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
+~~~
+
+   Теперь sync произошел успешно:
+
+~~~sh
+Normal   ReleaseSynced      7s (x3 over 107s)    helm-operator  managed release 'frontend' in namespace 'microservices-demo' synchronized
+
+$ kubectl get helmrelease -n microservices-demo
+NAME       RELEASE    PHASE       STATUS     MESSAGE                                                                       AGE
+frontend   frontend   Succeeded   deployed   Release was successful for Helm release 'frontend' in 'microservices-demo'.   17m
+
+helm list -n microservices-demo
+NAME            NAMESPACE               REVISION        UPDATED                                 STATUS          CHART           APP VERSION
+frontend        microservices-demo      1               2021-02-06 10:03:24.313965777 +0000 UTC deployed        frontend-0.21.0 1.16.0
+~~~
+
+   Можем выполнить синхронизацию вручную:
+
+~~~sh
+$ fluxctl --k8s-fwd-ns flux sync
+Synchronizing with ssh://git@gitlab.com/otus_hw/microservices-demo.git
+Revision of master to apply is 7679592
+Waiting for 7679592 to be applied ...
+Done.
+~~~
+
+3) Пересобран образ с инкрементацией версии тега до v0.0.2. Релиз автоматически обновился в кластере. 
+
+![frontend_v0.0.2](frontend_v0.0.2.png)
+
+  Для просмотра ревизий релиза можно использовать команду:
+
+~~~sh
+$ helm history frontend -n microservices-demo
+REVISION        UPDATED                         STATUS          CHART           APP VERSION     DESCRIPTION
+1               Sat Feb  6 10:03:24 2021        superseded      frontend-0.21.0 1.16.0          Install complete
+2               Sat Feb  6 10:50:22 2021        deployed        frontend-0.21.0 1.16.0          Upgrade complete
+~~~
+
+   В git-репозитории тоже видим, что тэг изменился на v0.0.2.
+
+![commit](commit.png)
+![gitlab_frontend](gitlab_frontend.png) 
+
+4) Попробуем внести изменения в Helm chart frontend и поменять имя deployment на frontend-hipster. 
+   После применения push в GitLab в логе helm-operator видим, что создан новый Deployment called \"frontend-hipster\" in microservices-demo.
+
+~~~sh
+info="starting sync run"
+ts=2021-02-06T11:38:46.453232885Z caller=release.go:353 component=release release=frontend targetNamespace=microservices-demo resource=microservices-demo:helmrelease/frontend helmVersion=v3 info="running upgrade" action=upgrade
+ts=2021-02-06T11:38:46.484401878Z caller=helm.go:69 component=helm version=v3 info="preparing upgrade for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.488910245Z caller=helm.go:69 component=helm version=v3 info="resetting values to the chart's original version" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.710112201Z caller=helm.go:69 component=helm version=v3 info="performing update for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.781978566Z caller=helm.go:69 component=helm version=v3 info="creating upgraded release for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.799502347Z caller=helm.go:69 component=helm version=v3 info="checking 5 resources for changes" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.808629453Z caller=helm.go:69 component=helm version=v3 info="Looks like there are no changes for Service \"frontend\"" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.825379548Z caller=helm.go:69 component=helm version=v3 info="Created a new Deployment called \"frontend-hipster\" in microservices-demo\n" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.834904108Z caller=helm.go:69 component=helm version=v3 info="Looks like there are no changes for Gateway \"frontend-gateway\"" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.852498528Z caller=helm.go:69 component=helm version=v3 info="Looks like there are no changes for ServiceMonitor \"frontend\"" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.870788415Z caller=helm.go:69 component=helm version=v3 info="Looks like there are no changes for VirtualService \"frontend\"" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.883253696Z caller=helm.go:69 component=helm version=v3 info="Deleting \"frontend\" in microservices-demo..." targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:46.924709185Z caller=helm.go:69 component=helm version=v3 info="updating status for upgraded release for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:47.004127464Z caller=release.go:364 component=release release=frontend targetNamespace=microservices-demo resource=microservices-demo:helmrelease/frontend helmVersion=v3 info="upgrade succeeded" revision=af9975bbf52055b7258a45552c300da38ae27459 phase=upgrade
+~~~ 
+
+  Механизм работы оператора - это постоянный опрос репозитория GitLab на наличие изменений: info="no changes" phase=dry-run-compare
+
+~~~sh
+info="starting sync run"
+ts=2021-02-06T11:38:04.614981202Z caller=release.go:289 component=release release=frontend targetNamespace=microservices-demo resource=microservices-demo:helmrelease/frontend helmVersion=v3 info="running dry-run upgrade to compare with release version '2'" action=dry-run-compare
+ts=2021-02-06T11:38:04.617465315Z caller=helm.go:69 component=helm version=v3 info="preparing upgrade for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:04.625723751Z caller=helm.go:69 component=helm version=v3 info="resetting values to the chart's original version" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:05.043351507Z caller=helm.go:69 component=helm version=v3 info="performing update for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:05.123770534Z caller=helm.go:69 component=helm version=v3 info="dry run for frontend" targetNamespace=microservices-demo release=frontend
+ts=2021-02-06T11:38:05.143749332Z caller=release.go:311 component=release release=frontend targetNamespace=microservices-demo resource=microservices-demo:helmrelease/frontend helmVersion=v3 info="no changes" phase=dry-run-compare
+~~~
+5) Добавили манифесты HelmRelease для всех микросервисов входящих в состав HipsterShop.
+   Все микросервисы кроме loadgenerator успешно развернулись в Kubernetes кластере.
+![k8s-microservices-demo](k8s-microservices-demo.png)
+
+## Canary deployments с Flagger и Istio
+
+1) Установили flagger через helmfile
+3) Установили istio через GKE add-on
+4) Изменено созданное ранее описание namespace microservices-demo, как istio-injection: enabled
+5) Самый простой способ добавить sidecar контейнер в уже запущенные pod - удалить их
+6) После этого можно проверить, что контейнер с названием istioproxy появился внутри каждого pod
+
+~~~sh
+$ kubectl delete pods --all -n microservices-demo
+$ kubectl get ns microservices-demo --show-labels
+NAME                 STATUS   AGE     LABELS
+microservices-demo   Active   3d14h   fluxcd.io/sync-gc-mark=sha256.Hs9UhrkDHGgPHng6V2omaoGB2F2rxI8Tii0vVt9vFGM,istio-injection=enabled
+~~~ 
+
+<details>
+  <summary>## Контейнер с названием istio-proxy появился внутри каждого pod</summary>
+
+~~~sh
+$ kubectl describe pod -l app=frontend -n microservices-demo
+Name:           frontend-hipster-556c8b6f49-cvwj9
+Namespace:      microservices-demo
+Priority:       0
+Node:           gke-omega-omega-pool-baef92b9-8ztc/10.166.15.218
+Start Time:     Mon, 08 Feb 2021 00:24:05 +0300
+Labels:         app=frontend
+                pod-template-hash=556c8b6f49
+                security.istio.io/tlsMode=istio
+Annotations:    sidecar.istio.io/status:
+                  {"version":"e08c22464c16dcd08d4d59263d2012385a58bd5e7871a19f2ea2ef2de85ceba3","initContainers":["istio-init"],"containers":["istio-proxy"]...
+Status:         Running
+IP:             10.108.5.7
+Controlled By:  ReplicaSet/frontend-hipster-556c8b6f49
+Init Containers:
+  istio-init:
+    Container ID:  docker://44a85840e44219c81489ad3cc065b744b65b0d7559ef51e6546dde1253ed2d2f
+    Image:         gke.gcr.io/istio/proxyv2:1.4.10-gke.7
+    Image ID:      docker-pullable://gke.gcr.io/istio/proxyv2@sha256:23964729d1fa5a853bf77f76c506da16ea37547603ed91321e17523e7741f007
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      istio-iptables
+      -p
+      15001
+      -z
+      15006
+      -u
+      1337
+      -m
+      REDIRECT
+      -i
+      *
+      -x
+
+      -b
+      *
+      -d
+      15020
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Mon, 08 Feb 2021 00:24:11 +0300
+      Finished:     Mon, 08 Feb 2021 00:24:12 +0300
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     100m
+      memory:  50Mi
+    Requests:
+      cpu:        10m
+      memory:     10Mi
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-b2qqg (ro)
+Containers:
+  server:
+    Container ID:   docker://8e5a11636e955fbf9c84b1a2e0337057792b7121da58666febb29f6fe8530156
+    Image:          itokareva/frontend:v0.0.2
+    Image ID:       docker-pullable://itokareva/frontend@sha256:ffa410a06cc23df8b2dc84f983e8ed1ff22a7b73a8fdb2acaf27aeb31057c94e
+    Port:           8080/TCP
+    Host Port:      0/TCP
+    State:          Running
+      Started:      Mon, 08 Feb 2021 00:24:40 +0300
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     200m
+      memory:  128Mi
+    Requests:
+      cpu:      100m
+      memory:   64Mi
+    Liveness:   http-get http://:8080/_healthz delay=10s timeout=1s period=10s #success=1 #failure=3
+    Readiness:  http-get http://:8080/_healthz delay=10s timeout=1s period=10s #success=1 #failure=3
+    Environment:
+      PORT:                          8080
+      PRODUCT_CATALOG_SERVICE_ADDR:  productcatalogservice:3550
+      CURRENCY_SERVICE_ADDR:         currencyservice:7000
+      CART_SERVICE_ADDR:             cartservice:7070
+      RECOMMENDATION_SERVICE_ADDR:   recommendationservice:8080
+      SHIPPING_SERVICE_ADDR:         shippingservice:50051
+      CHECKOUT_SERVICE_ADDR:         checkoutservice:5050
+      AD_SERVICE_ADDR:               adservice:9555
+      JAEGER_SERVICE_ADDR:           jaeger-collector.observability.svc.cluster.local:14268
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-b2qqg (ro)
+  istio-proxy:
+    Container ID:  docker://6751a27f7b1056b380255093523c5fd3f66be3ca4cf9443fdb99a1f6ae089248
+    Image:         gke.gcr.io/istio/proxyv2:1.4.10-gke.7
+    Image ID:      docker-pullable://gke.gcr.io/istio/proxyv2@sha256:23964729d1fa5a853bf77f76c506da16ea37547603ed91321e17523e7741f007
+    Port:          15090/TCP
+    Host Port:     0/TCP
+    Args:
+      proxy
+      sidecar
+      --domain
+      $(POD_NAMESPACE).svc.cluster.local
+      --configPath
+      /etc/istio/proxy
+      --binaryPath
+      /usr/local/bin/envoy
+      --serviceCluster
+      frontend.$(POD_NAMESPACE)
+      --drainDuration
+      45s
+      --parentShutdownDuration
+      1m0s
+      --discoveryAddress
+      istio-pilot.istio-system:15010
+      --zipkinAddress
+      zipkin.istio-system:9411
+      --dnsRefreshRate
+      300s
+      --connectTimeout
+      10s
+      --proxyAdminPort
+      15000
+      --concurrency
+      2
+      --controlPlaneAuthPolicy
+      NONE
+      --statusPort
+      15020
+      --applicationPorts
+      8080
+    State:          Running
+      Started:      Mon, 08 Feb 2021 00:24:41 +0300
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     2
+      memory:  1Gi
+    Requests:
+      cpu:      100m
+      memory:   128Mi
+    Readiness:  http-get http://:15020/healthz/ready delay=1s timeout=1s period=2s #success=1 #failure=30
+    Environment:
+      POD_NAME:                          frontend-hipster-556c8b6f49-cvwj9 (v1:metadata.name)
+      ISTIO_META_POD_PORTS:              [
+                                             {"name":"http","containerPort":8080,"protocol":"TCP"}
+                                         ]
+      ISTIO_META_CLUSTER_ID:             Kubernetes
+      POD_NAMESPACE:                     microservices-demo (v1:metadata.namespace)
+      INSTANCE_IP:                        (v1:status.podIP)
+      SERVICE_ACCOUNT:                    (v1:spec.serviceAccountName)
+      ISTIO_META_POD_NAME:               frontend-hipster-556c8b6f49-cvwj9 (v1:metadata.name)
+      ISTIO_META_CONFIG_NAMESPACE:       microservices-demo (v1:metadata.namespace)
+      SDS_ENABLED:                       false
+      ISTIO_META_INTERCEPTION_MODE:      REDIRECT
+      ISTIO_META_INCLUDE_INBOUND_PORTS:  8080
+      ISTIO_METAJSON_LABELS:             {"app":"frontend","pod-template-hash":"556c8b6f49"}
+
+      ISTIO_META_WORKLOAD_NAME:          frontend-hipster
+      ISTIO_META_OWNER:                  kubernetes://apis/apps/v1/namespaces/microservices-demo/deployments/frontend-hipster
+    Mounts:
+      /etc/certs/ from istio-certs (ro)
+      /etc/istio/proxy from istio-envoy (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-b2qqg (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             True
+  ContainersReady   True
+  PodScheduled      True
+Volumes:
+  default-token-b2qqg:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-b2qqg
+    Optional:    false
+  istio-envoy:
+    Type:       EmptyDir (a temporary directory that shares a pod's lifetime)
+    Medium:     Memory
+    SizeLimit:  <unset>
+  istio-certs:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  istio.default
+    Optional:    true
+QoS Class:       Burstable
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute for 300s
+                 node.kubernetes.io/unreachable:NoExecute for 300s
+Events:
+  Type    Reason     Age   From                                         Message
+  ----    ------     ----  ----                                         -------
+  Normal  Scheduled  55s   default-scheduler                            Successfully assigned microservices-demo/frontend-hipster-556c8b6f49-cvwj9 to gke-omega-omega-pool-baef92b9-8ztc
+  Normal  Pulling    54s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Pulling image "gke.gcr.io/istio/proxyv2:1.4.10-gke.7"
+  Normal  Pulled     49s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Successfully pulled image "gke.gcr.io/istio/proxyv2:1.4.10-gke.7"
+  Normal  Created    49s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Created container istio-init
+  Normal  Started    49s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Started container istio-init
+  Normal  Pulling    47s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Pulling image "itokareva/frontend:v0.0.2"
+  Normal  Pulled     20s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Successfully pulled image "itokareva/frontend:v0.0.2"
+  Normal  Created    20s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Created container server
+  Normal  Started    20s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Started container server
+  Normal  Pulled     20s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Container image "gke.gcr.io/istio/proxyv2:1.4.10-gke.7" already present on machine
+  Normal  Created    19s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Created container istio-proxy
+  Normal  Started    19s   kubelet, gke-omega-omega-pool-baef92b9-8ztc  Started container istio-proxy
+~~~
+
+</details>
+
+5) Чтобы настроить маршрутизацию трафика к приложению с использованием Istio, нам необходимо добавить ресурсы Gateway и VirtualService.
+   Дополнили наш Helm chart frontend манифестами gateway.yaml и virtualService.yaml. 
+6) Добавили в Helm chart frontend еще один файл - canary.yaml. В нем будем хранить описание стратегии, по которой необходимо
+обновлять данный микросервис.
+[Узнать подробнее о Canary Custom Resource можно по ссылке](https://docs.flagger.app/how-it-works#canary-custom-resource)
+7) Проверим, что Flagger Успешно инициализировал canary ресурс frontend:
+~~~sh
+$ kubectl get canary -n microservices-demo
+NAME       STATUS        WEIGHT   LASTTRANSITIONTIME
+frontend   Initialized   0        2021-02-23T18:46:35Z
+~~~
+   Обновил pod, добавив ему к названию постфикс primary:
+~~~sh
+$ kubectl get pods -n microservices-demo -l app=frontend-primary
+NAME                                READY   STATUS    RESTARTS   AGE
+frontend-primary-6498d4c8d9-6xs52   2/2     Running   0          19m
+~~~
+8) Попробуем провести релиз. Соберали новый образ frontend с тегом v0.0.3 и сделали push в Docker Hub.
+   Релиз в GitLab обновился, но в кластере версия образа frontend не изменилась. Канарейка не запустилась.
+
+   Flagger для старта канарейки использует prometheus, но он не был установлен GKE add-on-ом.
+   Аддон установил 1.4.10 версию istio, поэтому был выполнен [Download the Istio release.](https://istio.io/latest/docs/setup/getting-started/#download) 
+~~~sh
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.4.10 TARGET_ARCH=x86_64 sh -
+istioctl install --set profile=demo -y
+~~~
+   istioctl установил prometheus, но канарейка так и не взлетела и релиз так и не ушел в кластер.
+   Чтобы посмотреть метрики в prometheus и найти нужную нам [request-success-rate] (https://docs.flagger.app/usage/how-it-works#canary-custom-resource)  
+   был создан GateWay и VirtualService для prometheus [Remotely Accessing Telemetry Addons](https://istio.io/latest/docs/tasks/observability/gateways/#option-2-insecure-access-http)
+   п.3 Apply the following configuration to expose Prometheus.
+~~~sh
+export INGRESS_HOST=$(kubectl -n istio-system get service istio-ingressgateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+export INGRESS_DOMAIN=${INGRESS_HOST}.nip.io
+echo $INGRESS_DOMAIN
+35.228.152.13.nip.io
+
+cat <<EOF | kubectl apply -f -
+apiVersion: networking.istio.io/v1alpha3
+kind: Gateway
+metadata:
+  name: prometheus-gateway
+  namespace: istio-system
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http-prom
+      protocol: HTTP
+    hosts:
+    - "prometheus.${INGRESS_DOMAIN}"
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: prometheus-vs
+  namespace: istio-system
+spec:
+  hosts:
+  - "prometheus.${INGRESS_DOMAIN}"
+  gateways:
+  - prometheus-gateway
+  http:
+  - route:
+    - destination:
+        host: prometheus
+        port:
+          number: 9090
+---
+apiVersion: networking.istio.io/v1alpha3
+kind: DestinationRule
+metadata:
+  name: prometheus
+  namespace: istio-system
+spec:
+  host: prometheus
+  trafficPolicy:
+    tls:
+      mode: DISABLE
+~~~  
+  
+   [Заходим в prometheus по ссылке:] (http://prometheus.35.228.114.139.nip.io/)
+   Метрики request-success-rate в prometheus так и не нашлось.
+   Откатила istio аддон в ui google cloud. Подняла версию GKE до 1.17.17-gke.1100 (требование при установке Istio 1.9)
+   Установила Istio 1.9.
+~~~sh 
+curl -L https://istio.io/downloadIstio | ISTIO_VERSION=1.9.0 TARGET_ARCH=x86_64 sh -
+cd istio-1.9.1
+export PATH=$PWD/bin:$PATH
+istioctl install --set profile=demo -y
+~~~
+   В Istio 1.9. prometheus нужно устанавливать отдельно:
+
+~~~sh
+kubectl apply -f https://raw.githubusercontent.com/istio/istio/release-1.9/samples/addons/prometheus.yaml
+~~~
+[Prometheus](https://istio.io/latest/docs/ops/integrations/prometheus/#Configuration)
+	  
+Метрики request-success-rate так и не нашлось. Прочитала в документации о том, какие метрики ставятся вместе с Istio.
+[Istio Standard Metrics](https://istio.io/latest/docs/reference/config/metrics/)
+![Все они присутствуют в прометее] (Istio_Standard_Metrics.png)
+
+Обранилась к рекомендации:
+"Рекомендуется обратить внимание на Helm chart loadgenerator и
+модифицировать его таким образом, чтобы нагрузка
+генерировалась на внешний, по отношению к кластеру, URL (тем
+самым - создав имитацию реального поведения пользователей)"
+
+Внесла в параметры адрес нашего frontend (https://gitlab.com/otus_hw/microservices-demo/-/blob/master/deploy/charts/loadgenerator/values.yaml).
+Сервис loadgenerator успешно поднялся. И стал имитировать работу пользователей. Это важно для работы канарейки: сервис должин быть "живым",
+так как наша метрика проверяет количество успешных запросов.
+
+После всего проделанного выполнила rebuild frontend v.0.0.4. 
+Сначала обновилась версия [релиза] (https://gitlab.com/otus_hw/microservices-demo/-/blob/master/deploy/releases/frontend.yaml)
+Затем отработала канарейка и обновила версию сервиса в кластере:
+
+~~~sh
+kubectl describe canary frontend -n microservices-demo
+Name:         frontend
+Namespace:    microservices-demo
+Labels:       <none>
+Annotations:  helm.fluxcd.io/antecedent: microservices-demo:helmrelease/frontend-hipster
+API Version:  flagger.app/v1beta1
+Kind:         Canary
+Metadata:
+  Creation Timestamp:  2021-02-23T18:46:02Z
+  Generation:          1
+  Resource Version:    15618006
+  Self Link:           /apis/flagger.app/v1beta1/namespaces/microservices-demo/canaries/frontend
+  UID:                 04d6c41b-90a0-493b-8af7-edfad4b6f292
+Spec:
+  Analysis:
+    Interval:    30s
+    Max Weight:  30
+    Metrics:
+      Interval:               30s
+      Name:                   request-success-rate
+      Threshold:              99
+    Step Weight:              5
+    Threshold:                5
+  Progress Deadline Seconds:  60
+  Provider:                   istio
+  Service:
+    Gateways:
+      frontend-gateway
+    Hosts:
+      *
+    Port:         80
+    Target Port:  8080
+    Traffic Policy:
+      Tls:
+        Mode:  DISABLE
+  Target Ref:
+    API Version:  apps/v1
+    Kind:         Deployment
+    Name:         frontend
+Status:
+  Canary Weight:  0
+  Conditions:
+    Last Transition Time:  2021-03-06T17:38:20Z
+    Last Update Time:      2021-03-06T17:38:20Z
+    Message:               Canary analysis completed successfully, promotion finished.
+    Reason:                Succeeded
+    Status:                True
+    Type:                  Promoted
+  Failed Checks:           0
+  Iterations:              0
+  Last Applied Spec:       85cdf99c8b
+  Last Transition Time:    2021-03-06T17:38:20Z
+  Phase:                   Succeeded
+  Tracked Configs:
+Events:
+  Type    Reason  Age                   From     Message
+  ----    ------  ----                  ----     -------
+  Normal  Synced  6m35s                 flagger  New revision detected! Scaling up frontend.microservices-demo
+  Normal  Synced  6m5s                  flagger  Starting canary analysis for frontend.microservices-demo
+  Normal  Synced  6m5s                  flagger  Advance frontend.microservices-demo canary weight 5
+  Normal  Synced  5m35s                 flagger  Advance frontend.microservices-demo canary weight 10
+  Normal  Synced  5m5s                  flagger  Advance frontend.microservices-demo canary weight 15
+  Normal  Synced  4m35s                 flagger  Advance frontend.microservices-demo canary weight 20
+  Normal  Synced  4m5s                  flagger  Advance frontend.microservices-demo canary weight 25
+  Normal  Synced  3m35s                 flagger  Advance frontend.microservices-demo canary weight 30
+  Normal  Synced  3m5s                  flagger  Copying frontend.microservices-demo template spec to frontend-primary.microservices-demo
+  Normal  Synced  2m5s (x2 over 2m35s)  flagger  (combined from similar events): Promotion completed! Scaling down frontend.microservices-demo
+~~~
+
+в соответствии с настройками канарейки:
+    interval: 30s
+    threshold: 5
+    maxWeight: 30
+
+График из прометея с метриками, который пришли вместе с Flagger: ![flagger_canary_status](flagger_canary_status.png)
+
+Вывод: метрика, которую я так и не нашла в прометее и с которой работает канарейка скорее всего смерженная метрика Istio и приложения.
+[metrics-merging](https://istio.io/latest/docs/ops/integrations/prometheus/#option-1-metrics-merging)
+Envoy sidecar will merge Istio’s metrics with the application metrics. The merged metrics will be scraped from /stats/prometheus:15020 
+
+</details> 
 
