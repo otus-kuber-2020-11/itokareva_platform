@@ -1,0 +1,38 @@
+repositories:
+#- name: flux 
+#  url: fluxcd https://charts.fluxcd.io
+- name: flagger
+  url: https://flagger.app
+
+templates:
+  template: &template
+    missingFileHandler: Info
+    values:
+    - ./{{`{{ .Release.Name }}`}}.values.yaml
+
+releases:
+- name: flux 
+  chart: fluxcd/flux
+  namespace: flux
+#  version: 1.6.0
+  labels:
+    app: flux
+  wait: true
+  timeout: 280
+  <<: *template
+- name: helm-operator
+  chart: fluxcd/helm-operator
+  namespace: flux
+#  version: 1.2.0
+  labels:
+    app: helm-operator
+  wait: true
+  timeout: 280
+  <<: *template
+- name: flagger
+  chart: flagger/flagger
+  namespace: istio-system
+  wait: true
+  timeout: 280
+  <<: *template
+
