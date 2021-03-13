@@ -5,4 +5,4 @@ metadata:
 spec:
   volumeSnapshotClassName: csi-hostpath-snapclass
   source:
-    persistentVolumeClaimName: csi-pvc
+    persistentVolumeClaimName: storage-pvc 
