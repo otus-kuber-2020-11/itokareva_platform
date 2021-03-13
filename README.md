@@ -1795,3 +1795,221 @@ Events:
 
 </details> 
 
+<details>
+  <summary>## Домашняя работа 11</summary>
+
+## CSI. Обзор подсистем хранения данных в Kubernetes
+
+1) Создать StorageClass для CSI Host Path Driver
+
+Сделали это в миникубе (https://minikube.sigs.k8s.io/docs/tutorials/volume_snapshots_and_csi/)
+
+- установлена версия 1.18.1 миникуба (https://github.com/kubernetes/minikube/releases)
+
+~~~sh
+$ minikube version
+minikube version: v1.18.1
+commit: 09ee84d530de4a92f00f1c5dbc34cead092b95bc
+~~~
+	
+2) Устанавливаем csi-hostpath-driver
+
+~~~sh
+git clone https://github.com/kubernetes-csi/csi-driver-host-path.git
+cd csi-driver-host-path
+~~~
+
+По csi-driver-host-path/docs/deploy-1.17-and-later.md устанавлмваем csi-hostpath-driver
+
+~~~sh
+$ kubectl get pods
+NAME                         READY   STATUS    RESTARTS   AGE
+csi-hostpath-attacher-0      1/1     Running   0          11h
+csi-hostpath-provisioner-0   1/1     Running   0          11h
+csi-hostpath-resizer-0       1/1     Running   0          11h
+csi-hostpath-snapshotter-0   1/1     Running   0          11h
+csi-hostpath-socat-0         1/1     Running   0          11h
+csi-hostpathplugin-0         5/5     Running   0          11h
+snapshot-controller-0        1/1     Running   0          11h
+~~~
+
+4) Создаем storage class csi-hostpath-sc:
+
+~~~sh
+$ kubectl get sc
+NAME                 PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE   ALLOWVOLUMEEXPANSION   AGE
+csi-hostpath-sc      hostpath.csi.k8s.io        Delete          Immediate           true                   10h
+standard (default)   k8s.io/minikube-hostpath   Delete          Immediate           false                  167d
+~~~
+
+5) Создаем pvc csi-hostpath-sc. Вместе с ней создается и pv
+
+~~~sh 
+$ kubectl get pvc
+NAME      STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS      AGE
+csi-pvc   Bound    pvc-38f69cca-eeeb-44e9-8400-6363a016306d   1Gi        RWO            csi-hostpath-sc   10h
+
+$ kubectl get pv
+NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM             STORAGECLASS      REASON   AGE
+pvc-38f69cca-eeeb-44e9-8400-6363a016306d   1Gi        RWO            Delete           Bound    default/csi-pvc   csi-hostpath-sc            10h
+
+$ kubectl describe pvc csi-pvc
+Name:          csi-pvc
+Namespace:     default
+StorageClass:  csi-hostpath-sc
+Status:        Terminating (lasts 14h)
+Volume:        pvc-38f69cca-eeeb-44e9-8400-6363a016306d
+Labels:        <none>
+Annotations:   kubectl.kubernetes.io/last-applied-configuration:
+                 {"apiVersion":"v1","kind":"PersistentVolumeClaim","metadata":{"annotations":{},"name":"csi-pvc","namespace":"default"},"spec":{"accessMode...
+               pv.kubernetes.io/bind-completed: yes
+               pv.kubernetes.io/bound-by-controller: yes
+               volume.beta.kubernetes.io/storage-provisioner: hostpath.csi.k8s.io
+Finalizers:    [snapshot.storage.kubernetes.io/pvc-as-source-protection]
+Capacity:      1Gi
+Access Modes:  RWO
+VolumeMode:    Filesystem
+Mounted By:    <none>
+Events:        <none>
+
+~~~
+
+6) Создаем под my-csi-app, заходим в него и создаем файлик /data/hello-world: 
+
+~~~sh
+kubectl exec -it my-csi-app /bin/sh
+/ # touch /data/hello-world
+/ # exit
+
+$ kubectl exec -it $(kubectl get pods --selector app=csi-hostpathplugin -o jsonpath='{.items[*].metadata.name}') -c hostpath /bin/sh
+/ # find / -name hello-world
+/var/lib/kubelet/pods/2b7ee9f3-ef3a-49a2-9e24-e613a0e956a7/volumes/kubernetes.io~csi/pvc-38f69cca-eeeb-44e9-8400-6363a016306d/mount/hello-world
+/csi-data-dir/346fc9a1-80c0-11eb-89fe-0242ac11000b/hello-world
+/ # exit
+
+~~~
+
+7) Создаем snapshot c pvc:
+
+~~~sh
+
+$ kubectl apply -f csi-snapshot-v1beta1.yaml
+volumesnapshot.snapshot.storage.k8s.io/new-snapshot-demo created
+
+$ kubectl describe volumesnapshot.snapshot.storage.k8s.io new-snapshot-demo
+Name:         new-snapshot-demo
+Namespace:    default
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"snapshot.storage.k8s.io/v1beta1","kind":"VolumeSnapshot","metadata":{"annotations":{},"name":"new-snapshot-demo","namespace...
+API Version:  snapshot.storage.k8s.io/v1beta1
+Kind:         VolumeSnapshot
+Metadata:
+  Creation Timestamp:  2021-03-13T12:51:15Z
+  Finalizers:
+    snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection
+    snapshot.storage.kubernetes.io/volumesnapshot-bound-protection
+  Generation:  1
+  Managed Fields:
+    API Version:  snapshot.storage.k8s.io/v1beta1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .:
+          f:kubectl.kubernetes.io/last-applied-configuration:
+      f:spec:
+        .:
+        f:source:
+          .:
+          f:persistentVolumeClaimName:
+        f:volumeSnapshotClassName:
+    Manager:      kubectl
+    Operation:    Update
+    Time:         2021-03-13T12:51:15Z
+    API Version:  snapshot.storage.k8s.io/v1beta1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:finalizers:
+          .:
+          v:"snapshot.storage.kubernetes.io/volumesnapshot-as-source-protection":
+          v:"snapshot.storage.kubernetes.io/volumesnapshot-bound-protection":
+      f:status:
+        .:
+        f:boundVolumeSnapshotContentName:
+        f:creationTime:
+        f:readyToUse:
+        f:restoreSize:
+    Manager:         snapshot-controller
+    Operation:       Update
+    Time:            2021-03-13T12:51:16Z
+  Resource Version:  3021082
+  UID:               2fff78c2-0dcc-42a5-9422-db3d1ecd8f10
+Spec:
+  Source:
+    Persistent Volume Claim Name:  csi-pvc
+  Volume Snapshot Class Name:      csi-hostpath-snapclass
+Status:
+  Bound Volume Snapshot Content Name:  snapcontent-2fff78c2-0dcc-42a5-9422-db3d1ecd8f10
+  Creation Time:                       2021-03-13T12:51:15Z
+  Ready To Use:                        true
+  Restore Size:                        1Gi
+Events:                                <none>
+
+$ kubectl get VolumeSnapshotClass
+NAME                     AGE
+csi-hostpath-snapclass   10h
+
+$ kubectl get volumesnapshot
+NAME                AGE
+new-snapshot-demo   8m47s
+~~~
+
+#Здесь важно:
+
+Ready To Use:                        true
+
+Если false, то из такого snapshot не восстановиться.
+
+
+8) Удаляем pvc csi-pvc: 
+
+~~~ sh
+$ kubectl delete pod my-csi-app
+pod "my-csi-app" deleted
+$ kubectl edit pvc csi-pvc
+persistentvolumeclaim/csi-pvc edited
+$ kubectl delete pvc csi-pvc
+persistentvolumeclaim "csi-pvc" deleted
+$ kubectl get pvc
+No resources found.
+$ kubectl get pv
+No resources found.
+~~~
+# Удалить удалось только после edit и удаления всех finalizers.
+ 
+9) Создаем pvs из snapshot:
+
+~~~sh
+[itokareva@otus examples]$ kubectl apply -f csi-restore.yaml
+persistentvolumeclaim/csi-pvc created
+~~~  
+
+10) поднимаем под: 
+
+~~~sh
+$ kubectl apply -f csi-app.yaml
+pod/my-csi-app created
+~~~
+
+11) Проверяем, что файлик присутствует:
+
+~~~sh
+ kubectl exec -it my-csi-app /bin/sh
+/ # ls /data/
+hello-world
+/ # exit
+~~~
+</details>
+
