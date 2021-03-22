@@ -1,0 +1,7 @@
+project_id               = "otusk8s"
+cluster_name             = "omega"
+region                   = "europe-north1"
+zone                     = "europe-north1-a"
+monitoring_service       = "none"
+logging_service          = "none"
+cred_file                = "/home/itokareva/otusk8s-188afcfc4e98.json" 
