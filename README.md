@@ -2012,4 +2012,362 @@ hello-world
 / # exit
 ~~~
 </details>
+ 
+
+<details>
+  <summary>## Домашняя работа 12</summary>
+
+## Отладка и тестирование в kubernetes
+
+## kubectl debug
+
+1) Установили в наш кластер (minikube) kubectl debug
+
+~~~sh
+wget https://github.com/aylei/kubectl-debug/releases/download/v0.1.1/kubectl-debug_0.1.1_linux_amd64.tar.gz
+tar -zxvf kubectl-debug.tar.gz kubectl-debug
+sudo mv kubectl-debug /usr/local/bin/
+kubectl apply -f https://raw.githubusercontent.com/aylei/kubectl-debug/master/scripts/agent_daemonset.yml
+
+$ kubectl debug --agentless=false frontend
+error execute remote, Internal error occurred: error attaching to container: Error: No such image: nicolaka/netshoot:latest
+error: Internal error occurred: error attaching to container: Error: No such image: nicolaka/netshoot:latest
+~~~
+Полечилось:
+      containers:
+        - name: debug-agent
+          image: aylei/debug-agent:v0.1.1
+
+вместо image: aylei/debug-agent:latest
+
+2) Запустили в кластере поды с агентом kubectl-debug
+
+~~~sh
+$ kubectl debug --agentless=false frontend
+pulling image nicolaka/netshoot:latest...
+latest: Pulling from nicolaka/netshoot
+4c0d98bf9879: Pull complete
+df962687d630: Pull complete
+f4b598a64a46: Pull complete
+a3f487e8dfcb: Pull complete
+0d084d29b530: Pull complete
+c40275cdc1a4: Pull complete
+53d8247f861d: Pull complete
+Digest: sha256:6ae5a524ab390824a43a29a8a2ec7b9c013736d98a0aed264f1132196098aac2
+Status: Downloaded newer image for nicolaka/netshoot:latest
+starting debug container...
+container created, open tty...
+bash-5.1#  ps aux
+PID   USER     TIME  COMMAND
+    1 root      0:58 /frontend/server
+   14 root      0:00 bash
+   20 root      0:00 ps aux
+
+bash-5.1# strace -p1
+strace: Process 1 attached
+futex(0xf98d68, FUTEX_WAIT_PRIVATE, 0, NULL) = 0
+futex(0xf98d68, FUTEX_WAIT_PRIVATE, 0, NULL) = 0
+futex(0xf98d68, FUTEX_WAIT_PRIVATE, 0, NULL) = 0
+epoll_pwait(3, [], 128, 0, NULL, 1126072540297173) = 0
+futex(0xf98d68, FUTEX_WAIT_PRIVATE, 0, NULL) = -1 EAGAIN (Resource temporarily unavailable)
+write(5, "\0", 1)                       = 1
+futex(0xf98d68, FUTEX_WAIT_PRIVATE, 0, NULL) = 0
+epoll_pwait(3, [], 128, 0, NULL, 1126074073158758) = 0
+epoll_pwait(3, [], 128, 0, NULL, 1126074073319238) = 0
+socket(AF_INET, SOCK_DGRAM|SOCK_CLOEXEC|SOCK_NONBLOCK, IPPROTO_IP) = 7
+setsockopt(7, SOL_SOCKET, SO_BROADCAST, [1], 4) = 0
+connect(7, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("10.96.0.10")}, 16) = 0
+epoll_ctl(3, EPOLL_CTL_ADD, 7, {EPOLLIN|EPOLLOUT|EPOLLRDHUP|EPOLLET, {u32=1375927552, u64=140713094479104}}) = 0
+getsockname(7, {sa_family=AF_INET, sin_port=htons(60932), sin_addr=inet_addr("172.17.0.5")}, [112->16]) = 0
+getpeername(7, {sa_family=AF_INET, sin_port=htons(53), sin_addr=inet_addr("10.96.0.10")}, [112->16]) = 0
+--- SIGURG {si_signo=SIGURG, si_code=SI_TKILL, si_pid=1, si_uid=0} ---
+rt_sigreturn({mask=[]})                 = 0
+write(7, "\247\27\1\0\0\1\0\0\0\0\0\0\tlocalhost\7default\3s"..., 53) = 53
+read(7, "\247\27\205\3\0\1\0\0\0\1\0\0\tlocalhost\7default\3s"..., 512) = 146
+epoll_ctl(3, EPOLL_CTL_DEL, 7, 0xc00013c9fc) = 0
+........
+
+bash-5.1# cat trace-1.txt
+% time     seconds  usecs/call     calls    errors syscall
+------ ----------- ----------- --------- --------- ----------------
+ 29.08    0.002886         192        15           rt_sigreturn
+ 20.33    0.002018         183        11           futex
+ 14.17    0.001406         200         7           epoll_ctl
+  6.78    0.000673         168         4           getpeername
+  6.12    0.000607         151         4           write
+  5.52    0.000548         137         4           getsockname
+  4.72    0.000468         117         4           setsockopt
+  4.32    0.000429         107         4         1 read
+  3.90    0.000387          96         4           socket
+  2.56    0.000254          63         4           connect
+  2.50    0.000248          82         3           close
+  0.00    0.000000           0         1           newfstatat
+------ ----------- ----------- --------- --------- ----------------
+100.00    0.009924         152        65         1 total
+
+--------v0.1.1 kubectl-debug/pkg/agent/runtime.go
+
+hostConfig := &container.HostConfig{
+		NetworkMode: container.NetworkMode(m.containerMode(targetId)),
+		UsernsMode:  container.UsernsMode(m.containerMode(targetId)),
+		IpcMode:     container.IpcMode(m.containerMode(targetId)),
+		PidMode:     container.PidMode(m.containerMode(targetId)),
+		CapAdd:      strslice.StrSlice([]string{"SYS_PTRACE", "SYS_ADMIN"}),
+--------v0.1.0 kubectl-debug/pkg/agent/runtime.go
+	hostConfig := &container.HostConfig{
+		NetworkMode: container.NetworkMode(m.containerMode(targetId)),
+		UsernsMode:  container.UsernsMode(m.containerMode(targetId)),
+		IpcMode:     container.IpcMode(m.containerMode(targetId)),
+		PidMode:     container.PidMode(m.containerMode(targetId)),
+	}
+~~~
+
+Резюме:
+strace работает без ошибок в версии debug-agent:v0.1.1. В этой версии привилегии уже добавлены.
+
+
+# iptables-tailer
+
+1) Поднят кластер с установленным и запущенным Calico (для GKE - это просто
+включенные галки Network Policy) скрипт terraform в каталоге kubernetes-debug/kit/infra
+
+2) Для нашего задания в качестве тестового приложения вы возьмем [netperf-operator](https://github.com/piontec/netperf-operator)
+Это Kubernetes-оператор, который позволяет запускать тесты пропускной
+способности сети между нодами кластера.
+
+3) Запустить наш первый тест, применив манифест kubernetes-debug/kit/cr.yaml.
+
+~~~sh
+$ kubectl get netperfs.app.example.com
+NAME      AGE
+example   7s
+kubectl describe netperfs.app.example.com example
+Name:         example
+Namespace:    default
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"app.example.com/v1alpha1","kind":"Netperf","metadata":{"annotations":{},"name":"example","namespace":"default"}}
+API Version:  app.example.com/v1alpha1
+Kind:         Netperf
+Metadata:
+  Creation Timestamp:  2021-03-21T09:56:39Z
+  Generation:          4
+  Managed Fields:
+    API Version:  app.example.com/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .:
+          f:kubectl.kubernetes.io/last-applied-configuration:
+    Manager:      kubectl
+    Operation:    Update
+    Time:         2021-03-21T09:56:39Z
+    API Version:  app.example.com/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:spec:
+        .:
+        f:clientNode:
+        f:serverNode:
+      f:status:
+        .:
+        f:clientPod:
+        f:serverPod:
+        f:speedBitsPerSec:
+        f:status:
+    Manager:         netperf-operator
+    Operation:       Update
+    Time:            2021-03-21T09:56:56Z
+  Resource Version:  994239
+  Self Link:         /apis/app.example.com/v1alpha1/namespaces/default/netperfs/example
+  UID:               bfdb369c-241d-4b9b-87f6-57966a7c1768
+Spec:
+  Client Node:
+  Server Node:
+Status:
+  Client Pod:          netperf-client-57966a7c1768
+  Server Pod:          netperf-server-57966a7c1768
+  Speed Bits Per Sec:  6953.09
+  Status:              Done
+Events:                <none>
+~~~
+
+Видим, что Status: Done и выполнен замер Speed Bits Per Sec:  6953.09.
+
+4) Теперь можно добавить сетевую политику для Calico, чтобы ограничить
+доступ к подам Netperf и включить логирование в iptables.
+
+После примененния kubernetes-debug/kit/NetworkPolicy.yaml и повторного запуска теста:
+
+~~~sh
+$ kubectl apply -f NetworkPolicy.yaml
+networkpolicy.crd.projectcalico.org/netperf-calico-policy created
+$ kubectl get networkpolicies.crd.projectcalico.org
+NAME                    AGE
+netperf-calico-policy   2m44s
+$ kubectl delete -f cr.yaml
+netperf.app.example.com "example" deleted
+$ kubectl apply -f cr.yaml
+netperf.app.example.com/example created
+~~~ 
+Видим, что что тест висит в состоянии Starting:
+
+~~~sh
+$ kubectl describe netperfs.app.example.com example
+Name:         example
+Namespace:    default
+Labels:       <none>
+Annotations:  kubectl.kubernetes.io/last-applied-configuration:
+                {"apiVersion":"app.example.com/v1alpha1","kind":"Netperf","metadata":{"annotations":{},"name":"example","namespace":"default"}}
+API Version:  app.example.com/v1alpha1
+Kind:         Netperf
+Metadata:
+  Creation Timestamp:  2021-03-21T10:31:00Z
+  Generation:          3
+  Managed Fields:
+    API Version:  app.example.com/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:metadata:
+        f:annotations:
+          .:
+          f:kubectl.kubernetes.io/last-applied-configuration:
+    Manager:      kubectl
+    Operation:    Update
+    Time:         2021-03-21T10:31:00Z
+    API Version:  app.example.com/v1alpha1
+    Fields Type:  FieldsV1
+    fieldsV1:
+      f:spec:
+        .:
+        f:clientNode:
+        f:serverNode:
+      f:status:
+        .:
+        f:clientPod:
+        f:serverPod:
+        f:speedBitsPerSec:
+        f:status:
+    Manager:         netperf-operator
+    Operation:       Update
+    Time:            2021-03-21T10:31:04Z
+  Resource Version:  1006227
+  Self Link:         /apis/app.example.com/v1alpha1/namespaces/default/netperfs/example
+  UID:               765c342a-c269-4943-a2da-f30797dc4706
+Spec:
+  Client Node:
+  Server Node:
+Status:
+  Client Pod:          netperf-client-f30797dc4706
+  Server Pod:          netperf-server-f30797dc4706
+  Speed Bits Per Sec:  0
+  Status:              Started test
+Events:                <none>
+~~~
+
+5) Подключились к ноде по ssh и увидели, что в логах ноды Kubernetes появились сообщения об
+отброшенных пакетах:
+ 
+~~~sh
+itokareva@gke-omega-omega-pool-3b6acd66-zcxt:~$ sudo iptables --list -nv | grep DROP -
+Chain FORWARD (policy DROP 0 packets, 0 bytes)
+    0     0 DROP       all  --  *      docker0  0.0.0.0/0            0.0.0.0/0
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* kubernetes firewall for dropping marked packets */ mark match 0x8000/0x8000
+    0     0 DROP       all  --  *      *      !127.0.0.0/8          127.0.0.0/8          /* block incoming localnet connections */ ! ctstate RELATED,ESTABLISHED,DNAT
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate INVALID
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* cali:PEii4MWZaiLl4U3f */ /* Unknown interface */
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* cali:gIg8o9izBG4yW7xT */ /* Unknown interface */
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* cali:DhCx6XlDBaVSw7oj */ /* Unknown interface */
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* cali:6KGofkZJk0yyBq5d */ /* Unknown interface */
+    0     0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0            /* cali:D-EomQ5TN6h3wFbe */ ctstate INVALID
+    0     0 DROP       udp  --  *      *       0.0.0.0/0            0.0.0.0/0            /* cali:qWYggV8CI8QaTKjo */ /* Drop VXLAN encapped packets originating in pods */ multiport dports 4789
+.....
+
+$ kubectl logs kube-iptables-tailer-xbnmd -n kube-system
+2021/03/21 11:07:10 Invalid value for METRICS_SERVER_PORT: using default: 9090
+E0321 11:07:15.072035       1 watcher.go:36] Failed to open file: name=/var/log/iptables.log, error=open /var/log/iptables.log: no such file or directory
+E0321 11:07:20.071485       1 watcher.go:36] Failed to open file: name=/var/log/iptables.log, error=open /var/log/iptables.log: no such file or directory
+E0321 11:07:25.071548       1 watcher.go:36] Failed to open file: name=/var/log/iptables.log, error=open /var/log/iptables.log: no such file or directory
+E0321 11:07:30.071457       1 watcher.go:36] Failed to open file: name=/var/log/iptables.log, error=open /var/log/iptables.log: no such file or directory
+E0321 11:07:35.071564       1 watcher.go:36] Failed to open file: name=/var/log/iptables.log, error=open /var/log/iptables.log: no such file or directory
+E0321 11:07:40.071494       1 watcher.go:36] Failed to open file: name=/var/log/iptables.log, error=open /var/log/iptables.log: no such file or directory
+~~~
+
+6) Установим и запустим iptables-tailer, применив kubernetes-debug/kit/daemonset.yaml.
+Были большие мучения с переменной среды "IPTABLES_LOG_PATH". Дело в том, что во многих современных Linux-дистрибутивах логи по умолчанию не
+пишутся в /var/log/iptables.log. Не пишутся они ни в /var/log/kern.log, ни в /var/log/messages.log. 
+Они пишутся в журнал systemd: /var/log/journal. Этот путь задали в переменной JOURNAL_DIRECTORY.
+Но наш iptables-tailer не может читать такой формат лога. 
+Требуется пересобрать образ включив опцию C-Go.
+
+~~~sh
+$ git clone git@github.com:box/kube-iptables-tailer.git
+$ cd <path-to-the-source-code>
+$ make container-cgo  
+~~~
+
+7) Events появились. Теперь можно дебадить не заходя по ssh на нашу ноду:
+
+~~~sh
+$ kubectl describe pod --selector=app=netperf-operator
+Name:           netperf-client-3197fafa5e82
+Namespace:      default
+<<skipped>>
+Events:
+  Type     Reason      Age                    From                                         Message
+  ----     ------      ----                   ----                                         -------
+  Normal   Scheduled   6m56s                  default-scheduler                            Successfully assigned default/netperf-client-3197fafa5e82 to gke-omega-omega-pool-3b6acd66-zcxt
+  Normal   Pulled      2m19s (x3 over 6m55s)  kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Container image "tailoredcloud/netperf:v2.7" already present on machine
+  Normal   Created     2m18s (x3 over 6m55s)  kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Created container netperf-client-3197fafa5e82
+  Normal   Started     2m18s (x3 over 6m55s)  kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Started container netperf-client-3197fafa5e82
+  Warning  PacketDrop  2m18s (x2 over 4m44s)  kube-iptables-tailer                         Packet dropped when sending traffic to netperf-server-3197fafa5e82 (10.108.2.23)
+  Warning  BackOff     8s (x2 over 2m34s)     kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Back-off restarting failed container
+
+Name:           netperf-server-3197fafa5e82
+Namespace:      default
+<<skipped>>
+Events:
+  Type     Reason      Age                    From                                         Message
+  ----     ------      ----                   ----                                         -------
+  Normal   Scheduled   6m58s                  default-scheduler                            Successfully assigned default/netperf-server-3197fafa5e82 to gke-omega-omega-pool-3b6acd66-zcxt
+  Normal   Pulled      6m57s                  kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Container image "tailoredcloud/netperf:v2.7" already present on machine
+  Normal   Created     6m57s                  kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Created container netperf-server-3197fafa5e82
+  Normal   Started     6m57s                  kubelet, gke-omega-omega-pool-3b6acd66-zcxt  Started container netperf-server-3197fafa5e82
+  Warning  PacketDrop  6m55s                  kube-iptables-tailer                         Packet dropped when receiving traffic from 10.108.2.24
+  Warning  PacketDrop  2m18s (x2 over 4m44s)  kube-iptables-tailer                         Packet dropped when receiving traffic from netperf-client-3197fafa5e82 (10.108.2.24)
+~~~
+
+Задание со *
+чтобы в логах отображались имена Podов, а не их IP-адреса выставим переменную:
+
+- name: "POD_IDENTIFIER"
+  value: "name_with_namespace"
+
+Исправьте ошибку в нашей сетевой политике, чтобы Netperf снова начал работать:
+
+~~~sh
+apiVersion: crd.projectcalico.org/v1
+kind: NetworkPolicy
+metadata:
+  name: netperf-calico-policy
+  labels:
+spec:
+  order: 10
+  selector: app == "netperf-operator"
+  ingress:
+    - action: Allow
+      source:
+        selector: netperf-role == "netperf-client"
+    - action: Log
+    - action: Allow
+  egress:
+    - action: Allow
+      destination:
+        selector: netperf-role == "netperf-client
+    - action: Log
+    - action: Deny
+~~~
+
+</details>
 
