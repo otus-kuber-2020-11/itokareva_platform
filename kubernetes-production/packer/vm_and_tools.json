@@ -1,0 +1,34 @@
+{
+  "variables": {
+    "project_id": "",
+    "service_account_key_file": "",
+    "source_image_family": "",
+    "machine_type": "",
+    "zone": "",
+    "region": ""
+  },
+
+   "builders": [
+        {
+            "type": "googlecompute",
+            "account_file": "{{user `service_account_key_file`}}",
+            "ssh_username": "ubuntu",
+            "project_id": "{{user `project_id`}}",
+            "source_image_family": "{{user `source_image_family`}}",
+            "image_name": "k8s-nodes-{{timestamp}}",
+            "image_family": "k8s-nodes",
+            "machine_type": "{{user `machine_type`}}",
+            "network": "default",
+            "zone": "{{user `zone`}}",
+            "region": "{{user `region`}}"
+        }
+    ],
+"provisioners": [
+        {
+            "type": "shell",
+            "script": "install_tools.sh",
+            "pause_before": "20s",
+            "execute_command": "sudo {{.Path}}"
+        }
+   ]
+}
