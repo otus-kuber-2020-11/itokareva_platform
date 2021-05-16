@@ -2374,22 +2374,23 @@ spec:
 <details>
   <summary>## Домашняя работа 13</summary>
 
-## Занятие 14. Подходы к развертыванию и обновлению production-grade кластера
+## Подходы к развертыванию и обновлению production-grade кластера
 
 1) Подготовка машин:
 
-[x] Готовим образ с предустановленными tools c помощью packer: kubernetes-production/packer/vm_and_tools.json
+- Готовим образ с предустановленными tools c помощью packer: kubernetes-production/packer/vm_and_tools.json
 
-[x] Развертываем 4 виртуальные машины с запеченным образом kubernetes-production/terraform_baked_vm
+- Развертываем 4 виртуальные машины с запеченным образом kubernetes-production/terraform_baked_vm
 
 2) Создание кластера
 
 
-[x] Развертываем кластер версии 1.17.4-00 на четырех виртуальных машинах вручную:
+-  Развертываем кластер версии 1.17.4-00 на четырех виртуальных машинах вручную:
 
 
 <details>
   <summary>## kubeadm init на master-node</summary>
+	
 ~~~sh
 $ sudo kubeadm init --pod-network-cidr=192.168.0.0/24
 I0508 21:15:12.332221    2380 version.go:251] remote version is much newer: v1.21.0; falling back to: stable-1.17
@@ -2464,7 +2465,10 @@ Then you can join any number of worker nodes by running the following on each as
 kubeadm join 10.166.15.193:6443 --token l0jgej.z1ubdfj8757dc4c3 \
     --discovery-token-ca-cert-hash sha256:cafe2cd486f29221b53ff901f70333ab5f4962787aad93e571e6446966564236
 ~~~
-<details>
+
+</details>
+
+Присоединяем worker-ноду:
 
 ~~~sh
 $ sudo kubeadm join 10.166.15.193:6443 --token l0jgej.z1ubdfj8757dc4c3     --discovery-token-ca-cert-hash sha256:cafe2cd486f29221b53ff901f70333ab5f4962787aad93e571e6446966564236
@@ -2485,12 +2489,13 @@ This node has joined the cluster:
 Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
 ~~~
 
-[x] Автоматизируем развертывание с помощью terraform. Разворачиваем 4 виртуальные машины (1 - master, 3 - workers) и на выходе получаем k8-cluster.
-[x] Все скрипты в kubernetes-production/terraform_master_worker
+-  Автоматизируем развертывание с помощью terraform. Разворачиваем 4 виртуальные машины (1 - master, 3 - workers) и на выходе получаем k8-cluster.
+-  Все скрипты в kubernetes-production/terraform_master_worker
 
 <details>
-  <summary>## terraform отработал. Проверяем количество запущенных нод</summary>
-
+  <summary>## terraform отработал. Проверяем количество запущенных нод </summary>
+	
+~~~sh
 Apply complete! Resources: 3 added, 0 changed, 3 destroyed.
 
 Outputs:
@@ -2555,12 +2560,13 @@ k8s-master     Ready    master   25m   v1.17.4
 k8s-worker-0   Ready    <none>   20m   v1.17.4
 k8s-worker-1   Ready    <none>   20m   v1.17.4
 k8s-worker-2   Ready    <none>   20m   v1.17.4
+~~~
 </details>
 
 3) Обновление кластера
 
-[x] Обновляем созданный кластер до версии 1.18.0-00 так же с помощью terraform. 
-[x] Скрипты в каталоге kubernetes-production/terraform_upgrade
+-  Обновляем созданный кластер до версии 1.18.0-00 так же с помощью terraform. 
+-  Скрипты в каталоге kubernetes-production/terraform_upgrade
 
 Для обновления запускаем:
 
@@ -2570,17 +2576,19 @@ terraform apply -auto-approve
 
 Данный запуск делаем для каждой worker-ноды, предварительно задавая имя  worker-ноды (здесь - k8s-worker-2) в main_upgrade.tf:
 
- 
+~~~sh 
 data "google_compute_instance" "k8s-onega" {
  name = "k8s-worker-2"
 
 }
+~~~
 
 По-хорошему надо бы зашить в переменную.
 
 <details>
-  <summary>## upgrade последней ноды (второй). Проверяем количество запущенных нод</summary>
-
+  <summary>## upgrade последней ноды (второй). Проверяем количество запущенных нод </summary>
+	
+~~~sh
 $ terraform apply -auto-approve
 data.google_compute_instance.k8s-ladoga: Refreshing state...
 data.google_compute_instance.k8s-onega: Refreshing state...
@@ -2638,6 +2646,8 @@ null_resource.k8s-master-uncordon (remote-exec): k8s-worker-0   Ready    <none> 
 null_resource.k8s-master-uncordon (remote-exec): k8s-worker-1   Ready    <none>   33m   v1.18.0   10.166.0.22   <none>        Ubuntu 18.04.5 LTS   5.4.0-1042-gcp   docker://19.3.8
 null_resource.k8s-master-uncordon (remote-exec): k8s-worker-2   Ready    <none>   33m   v1.18.0   10.166.0.27   <none>        Ubuntu 18.04.5 LTS   5.4.0-1042-gcp   docker://19.3.8
 null_resource.k8s-master-uncordon: Creation complete after 1s [id=6135758193408990531]
+~~~	
+
 </details>
 
 4) Автоматическое развертывание кластера с помощью kubespray
@@ -2645,15 +2655,15 @@ null_resource.k8s-master-uncordon: Creation complete after 1s [id=61357581934089
 Kubespray - это Ansible playbook для установки Kubernetes.
 Для его использования достаточно иметь SSH-доступ на машины, поэтому не важно как они были созданы (Cloud, Bare metal).
 
-[x] - поднимаем 6 виртуальных машин с помощью terraform c образами ubuntu-1804-lts (kubernetes-production/terraform_vm)
-[x] - конфигурируем inventory для ansible-playbook (inventory/mycluster/inventory.ini)
-[x] - запускаем ansible-playbook
+-  поднимаем 6 виртуальных машин с помощью terraform c образами ubuntu-1804-lts (kubernetes-production/terraform_vm)
+-  конфигурируем inventory для ansible-playbook (inventory/mycluster/inventory.ini)
+-  запускаем ansible-playbook
 ~~~sh
 $ ansible-playbook -i inventory/mycluster/inventory.ini --become --become-user=root --user=itokareva --key-file=~/.ssh/id_rsa cluster.yml   
 ~~~   
-[x] - дожидаемся, когда playbook отработает
+- дожидаемся, когда playbook отработает
 
-[x] - захоим на master-ноду и проверяем количество развернутых нод:
+- захоим на master-ноду и проверяем количество развернутых нод:
 
 ~~~sh
 k8s-node-0                 : ok=533  changed=56   unreachable=0    failed=0    skipped=1161 rescued=0    ignored=2
@@ -2700,6 +2710,6 @@ k8s-node-3   Ready    <none>                 15m   v1.20.7
 
 Выполните установку кластера с 3 master-нодами и 2 worker-нодами.
 
-[x] - выполнено в п.4, с единственной поправкой - worker-нода - одна. Пробовала с двумя и тремя - завершалось с ошибкой.
+- [x] выполнено в п.4, с единственной поправкой - worker-нода - одна. Пробовала с двумя и тремя - завершалось с ошибкой.
 
 </details>
