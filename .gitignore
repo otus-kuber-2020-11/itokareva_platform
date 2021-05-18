@@ -1,5 +1,7 @@
 .helmfile
 .terraform
 terraform.tfstate
+terraform.tfvars
 terraform.tfstate.backup
 backend.ttf
+kubespray/

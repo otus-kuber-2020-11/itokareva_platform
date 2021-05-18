@@ -2371,3 +2371,345 @@ spec:
 
 </details>
 
+<details>
+  <summary>## Домашняя работа 13</summary>
+
+## Подходы к развертыванию и обновлению production-grade кластера
+
+1) Подготовка машин:
+
+- Готовим образ с предустановленными tools c помощью packer: kubernetes-production/packer/vm_and_tools.json
+
+- Развертываем 4 виртуальные машины с запеченным образом kubernetes-production/terraform_baked_vm
+
+2) Создание кластера
+
+
+-  Развертываем кластер версии 1.17.4-00 на четырех виртуальных машинах вручную:
+
+
+<details>
+  <summary>## kubeadm init на master-node</summary>
+	
+~~~sh
+$ sudo kubeadm init --pod-network-cidr=192.168.0.0/24
+I0508 21:15:12.332221    2380 version.go:251] remote version is much newer: v1.21.0; falling back to: stable-1.17
+W0508 21:15:12.631664    2380 validation.go:28] Cannot validate kubelet config - no validator is available
+W0508 21:15:12.631691    2380 validation.go:28] Cannot validate kube-proxy config - no validator is available
+[init] Using Kubernetes version: v1.17.17
+[preflight] Running pre-flight checks
+[preflight] Pulling images required for setting up a Kubernetes cluster
+[preflight] This might take a minute or two, depending on the speed of your internet connection
+[preflight] You can also perform this action in beforehand using 'kubeadm config images pull'
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Starting the kubelet
+[certs] Using certificateDir folder "/etc/kubernetes/pki"
+[certs] Generating "ca" certificate and key
+[certs] Generating "apiserver" certificate and key
+[certs] apiserver serving cert is signed for DNS names [k8s-node-0 kubernetes kubernetes.default kubernetes.default.svc kubernetes.default.svc.cluster.local] and IPs [10.96.0.1 10.166.15.193]
+[certs] Generating "apiserver-kubelet-client" certificate and key
+[certs] Generating "front-proxy-ca" certificate and key
+[certs] Generating "front-proxy-client" certificate and key
+[certs] Generating "etcd/ca" certificate and key
+[certs] Generating "etcd/server" certificate and key
+[certs] etcd/server serving cert is signed for DNS names [k8s-node-0 localhost] and IPs [10.166.15.193 127.0.0.1 ::1]
+[certs] Generating "etcd/peer" certificate and key
+[certs] etcd/peer serving cert is signed for DNS names [k8s-node-0 localhost] and IPs [10.166.15.193 127.0.0.1 ::1]
+[certs] Generating "etcd/healthcheck-client" certificate and key
+[certs] Generating "apiserver-etcd-client" certificate and key
+[certs] Generating "sa" key and public key
+[kubeconfig] Using kubeconfig folder "/etc/kubernetes"
+[kubeconfig] Writing "admin.conf" kubeconfig file
+[kubeconfig] Writing "kubelet.conf" kubeconfig file
+[kubeconfig] Writing "controller-manager.conf" kubeconfig file
+[kubeconfig] Writing "scheduler.conf" kubeconfig file
+[control-plane] Using manifest folder "/etc/kubernetes/manifests"
+[control-plane] Creating static Pod manifest for "kube-apiserver"
+[control-plane] Creating static Pod manifest for "kube-controller-manager"
+W0508 21:15:38.579806    2380 manifests.go:214] the default kube-apiserver authorization-mode is "Node,RBAC"; using "Node,RBAC"
+[control-plane] Creating static Pod manifest for "kube-scheduler"
+W0508 21:15:38.581275    2380 manifests.go:214] the default kube-apiserver authorization-mode is "Node,RBAC"; using "Node,RBAC"
+[etcd] Creating static Pod manifest for local etcd in "/etc/kubernetes/manifests"
+[wait-control-plane] Waiting for the kubelet to boot up the control plane as static Pods from directory "/etc/kubernetes/manifests". This can take up to 4m0s
+[apiclient] All control plane components are healthy after 18.503319 seconds
+[upload-config] Storing the configuration used in ConfigMap "kubeadm-config" in the "kube-system" Namespace
+[kubelet] Creating a ConfigMap "kubelet-config-1.17" in namespace kube-system with the configuration for the kubelets in the cluster
+[upload-certs] Skipping phase. Please see --upload-certs
+[mark-control-plane] Marking the node k8s-node-0 as control-plane by adding the label "node-role.kubernetes.io/master=''"
+[mark-control-plane] Marking the node k8s-node-0 as control-plane by adding the taints [node-role.kubernetes.io/master:NoSchedule]
+[bootstrap-token] Using token: l0jgej.z1ubdfj8757dc4c3
+[bootstrap-token] Configuring bootstrap tokens, cluster-info ConfigMap, RBAC Roles
+[bootstrap-token] configured RBAC rules to allow Node Bootstrap tokens to post CSRs in order for nodes to get long term certificate credentials
+[bootstrap-token] configured RBAC rules to allow the csrapprover controller automatically approve CSRs from a Node Bootstrap Token
+[bootstrap-token] configured RBAC rules to allow certificate rotation for all node client certificates in the cluster
+[bootstrap-token] Creating the "cluster-info" ConfigMap in the "kube-public" namespace
+[kubelet-finalize] Updating "/etc/kubernetes/kubelet.conf" to point to a rotatable kubelet client certificate and key
+[addons] Applied essential addon: CoreDNS
+[addons] Applied essential addon: kube-proxy
+
+Your Kubernetes control-plane has initialized successfully!
+
+To start using your cluster, you need to run the following as a regular user:
+
+  mkdir -p $HOME/.kube
+  sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+  sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+You should now deploy a pod network to the cluster.
+Run "kubectl apply -f [podnetwork].yaml" with one of the options listed at:
+  https://kubernetes.io/docs/concepts/cluster-administration/addons/
+
+Then you can join any number of worker nodes by running the following on each as root:
+
+kubeadm join 10.166.15.193:6443 --token l0jgej.z1ubdfj8757dc4c3 \
+    --discovery-token-ca-cert-hash sha256:cafe2cd486f29221b53ff901f70333ab5f4962787aad93e571e6446966564236
+~~~
+
+</details>
+
+Присоединяем worker-ноду:
+
+~~~sh
+$ sudo kubeadm join 10.166.15.193:6443 --token l0jgej.z1ubdfj8757dc4c3     --discovery-token-ca-cert-hash sha256:cafe2cd486f29221b53ff901f70333ab5f4962787aad93e571e6446966564236
+W0508 21:52:24.664280   10033 join.go:346] [preflight] WARNING: JoinControlPane.controlPlane settings will be ignored when control-plane flag is not set.
+[preflight] Running pre-flight checks
+[preflight] Reading configuration from the cluster...
+[preflight] FYI: You can look at this config file with 'kubectl -n kube-system get cm kubeadm-config -oyaml'
+[kubelet-start] Downloading configuration for the kubelet from the "kubelet-config-1.17" ConfigMap in the kube-system namespace
+[kubelet-start] Writing kubelet configuration to file "/var/lib/kubelet/config.yaml"
+[kubelet-start] Writing kubelet environment file with flags to file "/var/lib/kubelet/kubeadm-flags.env"
+[kubelet-start] Starting the kubelet
+[kubelet-start] Waiting for the kubelet to perform the TLS Bootstrap...
+
+This node has joined the cluster:
+* Certificate signing request was sent to apiserver and a response was received.
+* The Kubelet was informed of the new secure connection details.
+
+Run 'kubectl get nodes' on the control-plane to see this node join the cluster.
+~~~
+
+-  Автоматизируем развертывание с помощью terraform. Разворачиваем 4 виртуальные машины (1 - master, 3 - workers) и на выходе получаем k8-cluster.
+-  Все скрипты в kubernetes-production/terraform_master_worker
+
+<details>
+  <summary>## terraform отработал. Проверяем количество запущенных нод </summary>
+	
+~~~sh
+Apply complete! Resources: 3 added, 0 changed, 3 destroyed.
+
+Outputs:
+
+inventory = { "_meta": {
+        "hostvars": {
+               "k8s-worker-0": {
+             "host_name": "k8s-worker-0",
+             "host_ext_ip": "35.228.212.66"
+           },
+               "k8s-worker-1": {
+             "host_name": "k8s-worker-1",
+             "host_ext_ip": "35.228.7.247"
+           },
+               "k8s-worker-2": {
+             "host_name": "k8s-worker-2",
+             "host_ext_ip": "35.228.10.168"
+           },
+                 "host_name": "k8s-master",
+             "host_ext_ip": "35.228.80.91"
+        }
+
+    },
+  "docker-host": {
+    "hosts": [
+       "k8s-worker-0","k8s-worker-1","k8s-worker-2","k8s-master"
+              ]
+  }
+
+}
+$ ssh 35.228.80.91
+Welcome to Ubuntu 18.04.5 LTS (GNU/Linux 5.4.0-1042-gcp x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/advantage
+
+  System information as of Wed May 12 00:44:15 UTC 2021
+
+  System load:  0.14               Users logged in:        0
+  Usage of /:   23.4% of 19.21GB   IP address for ens4:    10.166.0.11
+  Memory usage: 14%                IP address for docker0: 172.17.0.1
+  Swap usage:   0%                 IP address for tunl0:   192.168.0.192
+  Processes:    163
+
+ * Pure upstream Kubernetes 1.21, smallest, simplest cluster ops!
+
+     https://microk8s.io/
+
+3 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+New release '20.04.2 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+
+*** System restart required ***
+Last login: Wed May 12 00:18:05 2021 from 5.144.116.254
+itokareva@k8s-master:~$ kubectl get nodes
+NAME           STATUS   ROLES    AGE   VERSION
+k8s-master     Ready    master   25m   v1.17.4
+k8s-worker-0   Ready    <none>   20m   v1.17.4
+k8s-worker-1   Ready    <none>   20m   v1.17.4
+k8s-worker-2   Ready    <none>   20m   v1.17.4
+~~~
+</details>
+
+3) Обновление кластера
+
+-  Обновляем созданный кластер до версии 1.18.0-00 так же с помощью terraform. 
+-  Скрипты в каталоге kubernetes-production/terraform_upgrade
+
+Для обновления запускаем:
+
+~~~sh
+terraform apply -auto-approve
+~~~
+
+Данный запуск делаем для каждой worker-ноды, предварительно задавая имя  worker-ноды (здесь - k8s-worker-2) в main_upgrade.tf:
+
+~~~sh 
+data "google_compute_instance" "k8s-onega" {
+ name = "k8s-worker-2"
+
+}
+~~~
+
+По-хорошему надо бы зашить в переменную.
+
+<details>
+  <summary>## upgrade последней ноды (второй). Проверяем количество запущенных нод </summary>
+	
+~~~sh
+$ terraform apply -auto-approve
+data.google_compute_instance.k8s-ladoga: Refreshing state...
+data.google_compute_instance.k8s-onega: Refreshing state...
+null_resource.k8s-master-upgrade: Refreshing state... [id=1484611468627528473]
+null_resource.k8s-worker-0-upgrade: Refreshing state... [id=3169972396813765732]
+null_resource.k8s-worker-0-upgrade: Destroying... [id=3169972396813765732]
+null_resource.k8s-worker-0-upgrade: Destruction complete after 0s
+null_resource.k8s-worker-0-upgrade: Creating...
+null_resource.k8s-worker-0-upgrade: Provisioning with 'remote-exec'...
+null_resource.k8s-worker-0-upgrade (remote-exec): Connecting to remote host via SSH...
+null_resource.k8s-worker-0-upgrade (remote-exec):   Host: 35.228.80.91
+null_resource.k8s-worker-0-upgrade (remote-exec):   User: itokareva
+null_resource.k8s-worker-0-upgrade (remote-exec):   Password: false
+null_resource.k8s-worker-0-upgrade (remote-exec):   Private key: true
+null_resource.k8s-worker-0-upgrade (remote-exec):   Certificate: false
+null_resource.k8s-worker-0-upgrade (remote-exec):   SSH Agent: false
+null_resource.k8s-worker-0-upgrade (remote-exec):   Checking Host Key: false
+null_resource.k8s-worker-0-upgrade (remote-exec): Connected!
+null_resource.k8s-worker-0-upgrade (remote-exec): Reading package lists... 0%
+null_resource.k8s-worker-0-upgrade (remote-exec): Reading package lists... 100%
+null_resource.k8s-worker-0-upgrade (remote-exec): Reading package lists... Done
+null_resource.k8s-worker-0-upgrade (remote-exec): Building dependency tree... 0%
+null_resource.k8s-worker-0-upgrade (remote-exec): Building dependency tree... 0%
+null_resource.k8s-worker-0-upgrade (remote-exec): Building dependency tree... 50%
+null_resource.k8s-worker-0-upgrade (remote-exec): Building dependency tree... 50%
+null_resource.k8s-worker-0-upgrade (remote-exec): Building dependency tree
+null_resource.k8s-worker-0-upgrade (remote-exec): Reading state information... 0%
+null_resource.k8s-worker-0-upgrade (remote-exec): Reading state information... 0%
+null_resource.k8s-worker-0-upgrade (remote-exec): Reading state information... Done
+null_resource.k8s-worker-0-upgrade (remote-exec): kubeadm is already the newest version (1.18.0-00).
+null_resource.k8s-worker-0-upgrade (remote-exec): kubelet is already the newest version (1.18.0-00).
+null_resource.k8s-worker-0-upgrade (remote-exec): The following package was automatically installed and is no longer required:
+null_resource.k8s-worker-0-upgrade (remote-exec):   libnuma1
+null_resource.k8s-worker-0-upgrade (remote-exec): Use 'sudo apt autoremove' to remove it.
+null_resource.k8s-worker-0-upgrade (remote-exec): 0 upgraded, 0 newly installed, 0 to remove and 2 not upgraded.
+null_resource.k8s-worker-0-upgrade (remote-exec): kubeadm version: &version.Info{Major:"1", Minor:"18", GitVersion:"v1.18.0", GitCommit:"9e991415386e4cf155a24b1da15becaa390438d8", GitTreeState:"clean", BuildDate:"2020-03-25T14:56:30Z", GoVersion:"go1.13.8", Compiler:"gc", Platform:"linux/amd64"}
+null_resource.k8s-worker-0-upgrade (remote-exec): Kubernetes v1.18.0
+null_resource.k8s-worker-0-upgrade: Creation complete after 2s [id=4029035116811033115]
+null_resource.k8s-master-uncordon: Creating...
+null_resource.k8s-master-uncordon: Provisioning with 'remote-exec'...
+null_resource.k8s-master-uncordon (remote-exec): Connecting to remote host via SSH...
+null_resource.k8s-master-uncordon (remote-exec):   Host: 35.228.212.66
+null_resource.k8s-master-uncordon (remote-exec):   User: itokareva
+null_resource.k8s-master-uncordon (remote-exec):   Password: false
+null_resource.k8s-master-uncordon (remote-exec):   Private key: true
+null_resource.k8s-master-uncordon (remote-exec):   Certificate: false
+null_resource.k8s-master-uncordon (remote-exec):   SSH Agent: false
+null_resource.k8s-master-uncordon (remote-exec):   Checking Host Key: false
+null_resource.k8s-master-uncordon (remote-exec): Connected!
+null_resource.k8s-master-uncordon (remote-exec): Error: unknown flag: --ignore-daemonsets
+null_resource.k8s-master-uncordon (remote-exec): See 'kubectl uncordon --help' for usage.
+null_resource.k8s-master-uncordon (remote-exec): NAME           STATUS   ROLES    AGE   VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION   CONTAINER-RUNTIME
+null_resource.k8s-master-uncordon (remote-exec): k8s-master     Ready    master   34m   v1.18.0   10.166.0.21   <none>        Ubuntu 18.04.5 LTS   5.4.0-1042-gcp   docker://19.3.8
+null_resource.k8s-master-uncordon (remote-exec): k8s-worker-0   Ready    <none>   33m   v1.18.0   10.166.0.28   <none>        Ubuntu 18.04.5 LTS   5.4.0-1042-gcp   docker://19.3.8
+null_resource.k8s-master-uncordon (remote-exec): k8s-worker-1   Ready    <none>   33m   v1.18.0   10.166.0.22   <none>        Ubuntu 18.04.5 LTS   5.4.0-1042-gcp   docker://19.3.8
+null_resource.k8s-master-uncordon (remote-exec): k8s-worker-2   Ready    <none>   33m   v1.18.0   10.166.0.27   <none>        Ubuntu 18.04.5 LTS   5.4.0-1042-gcp   docker://19.3.8
+null_resource.k8s-master-uncordon: Creation complete after 1s [id=6135758193408990531]
+~~~	
+
+</details>
+
+4) Автоматическое развертывание кластера с помощью kubespray
+
+Kubespray - это Ansible playbook для установки Kubernetes.
+Для его использования достаточно иметь SSH-доступ на машины, поэтому не важно как они были созданы (Cloud, Bare metal).
+
+-  поднимаем 6 виртуальных машин с помощью terraform c образами ubuntu-1804-lts (kubernetes-production/terraform_vm)
+-  конфигурируем inventory для ansible-playbook (inventory/mycluster/inventory.ini)
+-  запускаем ansible-playbook
+~~~sh
+$ ansible-playbook -i inventory/mycluster/inventory.ini --become --become-user=root --user=itokareva --key-file=~/.ssh/id_rsa cluster.yml   
+~~~   
+- дожидаемся, когда playbook отработает
+
+- захоим на master-ноду и проверяем количество развернутых нод:
+
+~~~sh
+k8s-node-0                 : ok=533  changed=56   unreachable=0    failed=0    skipped=1161 rescued=0    ignored=2
+k8s-node-1                 : ok=467  changed=47   unreachable=0    failed=0    skipped=1012 rescued=0    ignored=1
+k8s-node-2                 : ok=469  changed=48   unreachable=0    failed=0    skipped=1010 rescued=0    ignored=1
+k8s-node-3                 : ok=347  changed=38   unreachable=0    failed=0    skipped=631  rescued=0    ignored=1
+localhost                  : ok=3    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0
+
+Saturday 15 May 2021  18:58:34 +0300 (0:00:00.160)       0:09:50.182 **********
+===============================================================================
+kubernetes/control-plane : Joining control plane node to the cluster. --------------------------------------------------------------------------------------------------------------- 31.43s
+kubernetes/kubeadm : Join to cluster ------------------------------------------------------------------------------------------------------------------------------------------------ 25.13s
+kubernetes/control-plane : kubeadm | Initialize first master ------------------------------------------------------------------------------------------------------------------------ 16.48s
+Gen_certs | Write etcd member and admin certs to other etcd nodes -------------------------------------------------------------------------------------------------------------------- 9.74s
+Gen_certs | Write etcd member and admin certs to other etcd nodes -------------------------------------------------------------------------------------------------------------------- 9.70s
+kubernetes-apps/ansible : Kubernetes Apps | Lay Down CoreDNS Template ---------------------------------------------------------------------------------------------------------------- 7.70s
+kubernetes-apps/ansible : Kubernetes Apps | Start Resources -------------------------------------------------------------------------------------------------------------------------- 7.24s
+download | Download files / images --------------------------------------------------------------------------------------------------------------------------------------------------- 6.41s
+Gen_certs | Write node certs to other etcd nodes ------------------------------------------------------------------------------------------------------------------------------------- 5.96s
+Gen_certs | Write node certs to other etcd nodes ------------------------------------------------------------------------------------------------------------------------------------- 5.75s
+Gen_certs | Gather etcd member and admin certs from first etcd node ------------------------------------------------------------------------------------------------------------------ 4.84s
+network_plugin/calico : Calico | Create calico manifests ----------------------------------------------------------------------------------------------------------------------------- 4.80s
+Gen_certs | Gather etcd member and admin certs from first etcd node ------------------------------------------------------------------------------------------------------------------ 4.78s
+download_file | Download item -------------------------------------------------------------------------------------------------------------------------------------------------------- 4.47s
+network_plugin/calico : Start Calico resources --------------------------------------------------------------------------------------------------------------------------------------- 4.47s
+kubernetes/preinstall : Get current calico cluster version --------------------------------------------------------------------------------------------------------------------------- 4.13s
+container-engine/docker : ensure docker packages are installed ----------------------------------------------------------------------------------------------------------------------- 3.98s
+download | Download files / images --------------------------------------------------------------------------------------------------------------------------------------------------- 3.68s
+download | Download files / images --------------------------------------------------------------------------------------------------------------------------------------------------- 3.53s
+download | Download files / images --------------------------------------------------------------------------------------------------------------------------------------------------- 3.50s
+$ ssh 35.228.85.69
+$ mkdir -p $HOME/.kube
+itokareva@k8s-node-0:~$ sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+itokareva@k8s-node-0:~$ sudo chown $(id -u):$(id -g) $HOME/.kube/config
+itokareva@k8s-node-0:~$ kubectl get nodes
+NAME         STATUS   ROLES                  AGE   VERSION
+k8s-node-0   Ready    control-plane,master   17m   v1.20.7
+k8s-node-1   Ready    control-plane,master   16m   v1.20.7
+k8s-node-2   Ready    control-plane,master   16m   v1.20.7
+k8s-node-3   Ready    <none>                 15m   v1.20.7
+~~~
+
+Задание со (*)
+
+Выполните установку кластера с 3 master-нодами и 2 worker-нодами.
+
+- [x] выполнено в п.4, с единственной поправкой - worker-нода - одна. Пробовала с двумя и тремя - завершалось с ошибкой.
+
+</details>
