@@ -2713,3 +2713,561 @@ k8s-node-3   Ready    <none>                 15m   v1.20.7
 - [x] выполнено в п.4, с единственной поправкой - worker-нода - одна. Пробовала с двумя и тремя - завершалось с ошибкой.
 
 </details>
+
+</details>
+
+<details>
+  <summary>## Домашняя работа 14</summary>
+
+## Хранилище секретов для приложений. Vault
+
+В ходе работы мы:
+- [x] установим кластер vault в kubernetes
+- [x] научимся создавать секреты и политики
+- [x] настроим авторизацию в vault через kubernetes sa
+- [x] сделаем под с контейнером nginx, в который прокинем
+- [x] секреты из vault через consul-template
+
+
+1) Подготовка k8s-кластера скриптами terraform (kubernetes-vault/infra)
+2) Установии Consul, Vault. Из двух контейнеров vault стартовал только один:
+
+~~~sh
+kubectl logs vault-0
+2021-05-16T11:19:32.459Z [INFO]  core: seal configuration missing, not initialized
+2021-05-16T11:19:37.453Z [INFO]  core: security barrier not initialized
+~~~ 
+
+3) Инициализируем vault:
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault operator init --key-shares=1 --key-threshold=1
+Unseal Key 1: lKGAsTC88bmKbhJMvbP2E1TCHckfV6n/o3QT8QtqJbA=
+
+Initial Root Token: s.IkuDSA95gJpvg1M0CinjgOPN
+
+Vault initialized with 1 key shares and a key threshold of 1. Please securely
+distribute the key shares printed above. When the Vault is re-sealed,
+restarted, or stopped, you must supply at least 1 of these keys to unseal it
+before it can start servicing requests.
+
+Vault does not store the generated master key. Without at least 1 key to
+reconstruct the master key, Vault will remain permanently sealed!
+
+It is possible to generate new unseal keys, provided you have a quorum of
+existing unseal keys shares. See "vault operator rekey" for more information.
+~~~	
+
+После инициализации второй контейнер подов vault-(0-2) так и не стартовал:
+
+~~~sh
+vault-0                                 0/1     Running   0          49m
+vault-1                                 0/1     Running   0          49m
+vault-2                                 0/1     Running   0          49m
+~~~
+
+~~~sh
+$ kubectl logs vault-0
+
+2021-05-16T11:24:34.497Z [INFO]  core: security barrier not initialized
+2021-05-16T11:24:34.529Z [INFO]  core: security barrier initialized: stored=1 shares=1 threshold=1
+2021-05-16T11:24:34.609Z [INFO]  core: post-unseal setup starting
+2021-05-16T11:24:34.649Z [INFO]  core: loaded wrapping token key
+2021-05-16T11:24:34.649Z [INFO]  core: successfully setup plugin catalog: plugin-directory=
+2021-05-16T11:24:34.651Z [INFO]  core: no mounts; adding default mount table
+2021-05-16T11:24:34.721Z [INFO]  core: successfully mounted backend: type=cubbyhole path=cubbyhole/
+2021-05-16T11:24:34.722Z [INFO]  core: successfully mounted backend: type=system path=sys/
+2021-05-16T11:24:34.722Z [INFO]  core: successfully mounted backend: type=identity path=identity/
+2021-05-16T11:24:34.927Z [INFO]  core: successfully enabled credential backend: type=token path=token/
+2021-05-16T11:24:34.930Z [INFO]  rollback: starting rollback manager
+2021-05-16T11:24:34.931Z [INFO]  core: restoring leases
+2021-05-16T11:24:34.932Z [INFO]  expiration: lease restore complete
+2021-05-16T11:24:35.010Z [INFO]  identity: entities restored
+2021-05-16T11:24:35.011Z [INFO]  identity: groups restored
+2021-05-16T11:24:35.017Z [INFO]  core: usage gauge collection is disabled
+2021-05-16T11:24:35.023Z [INFO]  core: post-unseal setup complete
+2021-05-16T11:24:35.117Z [INFO]  core: root token generated
+2021-05-16T11:24:35.117Z [INFO]  core: pre-seal teardown starting
+2021-05-16T11:24:35.118Z [INFO]  rollback: stopping rollback manager
+2021-05-16T11:24:35.118Z [INFO]  core: pre-seal teardown complete
+~~~
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault status
+Key                Value
+---                -----
+Seal Type          shamir
+Initialized        true
+Sealed             true
+Total Shares       1
+Threshold          1
+Unseal Progress    0/1
+Unseal Nonce       n/a
+Version            1.7.0
+Storage Type       consul
+HA Enabled         true
+command terminated with exit code 2
+~~~
+
+4) Распечатаем vault
+
+<details>
+  <summary>## Распечатаем каждый под</summary>
+
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault operator unseal lKGAsTC88bmKbhJMvbP2E1TCHckfV6n/o3QT8QtqJbA=
+Key             Value
+---             -----
+Seal Type       shamir
+Initialized     true
+Sealed          false
+Total Shares    1
+Threshold       1
+Version         1.7.0
+Storage Type    consul
+Cluster Name    vault-cluster-5b5207cf
+Cluster ID      da852d0d-f102-d3e8-75b4-e02cf379f56a
+HA Enabled      true
+HA Cluster      https://vault-0.vault-internal:8201
+HA Mode         active
+Active Since    2021-05-16T11:39:15.42289691Z
+
+$ kubectl exec -it vault-1 -- vault operator unseal lKGAsTC88bmKbhJMvbP2E1TCHckfV6n/o3QT8QtqJbA=
+Key                    Value
+---                    -----
+Seal Type              shamir
+Initialized            true
+Sealed                 false
+Total Shares           1
+Threshold              1
+Version                1.7.0
+Storage Type           consul
+Cluster Name           vault-cluster-5b5207cf
+Cluster ID             da852d0d-f102-d3e8-75b4-e02cf379f56a
+HA Enabled             true
+HA Cluster             https://vault-0.vault-internal:8201
+HA Mode                standby
+Active Node Address    http://10.112.5.4:8200
+$ kubectl exec -it vault-2 -- vault operator unseal lKGAsTC88bmKbhJMvbP2E1TCHckfV6n/o3QT8QtqJbA=
+Key                    Value
+---                    -----
+Seal Type              shamir
+Initialized            true
+Sealed                 false
+Total Shares           1
+Threshold              1
+Version                1.7.0
+Storage Type           consul
+Cluster Name           vault-cluster-5b5207cf
+Cluster ID             da852d0d-f102-d3e8-75b4-e02cf379f56a
+HA Enabled             true
+HA Cluster             https://vault-0.vault-internal:8201
+HA Mode                standby
+Active Node Address    http://10.112.5.4:8200
+~~~
+</details>
+
+После unseal в оба контейнера пода vault - running:
+
+~~~sh
+$ kubectl get pods
+NAME                                    READY   STATUS    RESTARTS   AGE
+consul-consul-4dmtw                     1/1     Running   0          67m
+consul-consul-gq9km                     1/1     Running   0          67m
+consul-consul-rw4l8                     1/1     Running   0          67m
+consul-consul-server-0                  1/1     Running   0          67m
+consul-consul-server-1                  1/1     Running   0          67m
+consul-consul-server-2                  1/1     Running   0          67m
+consul-consul-wfqfw                     1/1     Running   0          67m
+vault-0                                 1/1     Running   0          60m
+vault-1                                 1/1     Running   0          60m
+vault-2                                 1/1     Running   0          60m
+vault-agent-injector-64b8c58fff-wrdl8   1/1     Running   0          60m
+~~~
+
+5) Посмотрим список доступных авторизаций:
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault auth list
+Error listing enabled authentications: Error making API request.
+
+URL: GET http://127.0.0.1:8200/v1/sys/auth
+Code: 400. Errors:
+
+* missing client token
+command terminated with exit code 2
+~~~
+
+6) Залогинимся в vault(у нас есть root token)
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault login
+Token (will be hidden):
+Success! You are now authenticated. The token information displayed below
+is already stored in the token helper. You do NOT need to run "vault login"
+again. Future Vault requests will automatically use this token.
+
+Key                  Value
+---                  -----
+token                s.IkuDSA95gJpvg1M0CinjgOPN
+token_accessor       Qi16NeXxuCgPQHTVGWiHAOjm
+token_duration       ∞
+token_renewable      false
+token_policies       ["root"]
+identity_policies    []
+policies             ["root"]
+~~~
+
+После этого список доступных авторизаций уже не выдаст ошибку:
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault auth list
+Path      Type     Accessor               Description
+----      ----     --------               -----------
+token/    token    auth_token_ef945b52    token based credentials
+~~~
+
+7) Заведем секреты:
+
+~~~sh
+$ kubectl exec -it vault-0 /bin/sh
+$ vault secrets enable --path=otus kv
+Success! Enabled the kv secrets engine at: otus/
+/ $ exit
+$ kubectl exec -it vault-0 -- vault secrets list --detailed
+Path          Plugin       Accessor              Default TTL    Max TTL    Force No Cache    Replication    Seal Wrap    External Entropy Access    Options    Description                                                UUID
+----          ------       --------              -----------    -------    --------------    -----------    ---------    -----------------------    -------    -----------                                                ----
+cubbyhole/    cubbyhole    cubbyhole_d8218a62    n/a            n/a        false             local          false        false                      map[]      per-token private secret storage                           ef91c564-4677-0bdd-862f-61e591400569
+identity/     identity     identity_8b546f74     system         system     false             replicated     false        false                      map[]      identity store                                             487224d8-4a26-d3d5-b509-b61d75400f64
+otus/         kv           kv_3ab074d4           system         system     false             replicated     false        false                      map[]      n/a                                                        9a746305-449c-50ff-0223-1662c8ba55ff
+sys/          system       system_1085a424       n/a            n/a        false             replicated     false        false                      map[]      system endpoints used for control, policy and debugging    c855ea7e-18c6-e037-5d24-e98120d2e5a4
+$ kubectl exec -it vault-0 -- vault kv put otus/otus-ro/config username='otus'
+password='asajkjkahs'
+Success! Data written to: otus/otus-ro/config
+$ kubectl exec -it vault-0 -- vault kv put otus/otus-rw/config username='otus'
+password='asajkjkahs'
+Success! Data written to: otus/otus-rw/config
+$ kubectl exec -it vault-0 -- vault read otus/otus-ro/config
+Key                 Value
+---                 -----
+refresh_interval    768h
+username            otus
+$ kubectl exec -it vault-0 -- vault kv get otus/otus-rw/config
+====== Data ======
+Key         Value
+---         -----
+username    otus
+~~~
+
+8) Включим авторизацию через k8s
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault auth enable kubernetes
+Success! Enabled kubernetes auth method at: kubernetes/
+[itokareva@itokareva-otus kubernetes-vault]$ kubectl exec -it vault-0 -- vault auth list
+Path           Type          Accessor                    Description
+----           ----          --------                    -----------
+kubernetes/    kubernetes    auth_kubernetes_dfc9363c    n/a
+token/         token         auth_token_ef945b52         token based credentials
+~~~
+
+9) Создадим service account vault-auth и применим kubernetes-vault/ClusterRoleBinding.yaml
+
+~~~sh
+$ kubectl get ClusterRole system:auth-delegator
+NAME                    CREATED AT
+system:auth-delegator   2021-05-16T09:53:47Z 
+$ kubectl create serviceaccount vault-auth
+serviceaccount/vault-auth created
+$ kubectl apply -f vault-auth-service-account.yml
+clusterrolebinding.rbac.authorization.k8s.io/role-tokenreview-binding created
+~~~
+
+10) Подготовим переменные для записи в конфиг кубер авторизации
+
+~~~sh
+export VAULT_SA_NAME=$(kubectl get sa vault-auth -o jsonpath="{.secrets[*]['name']}")
+export SA_JWT_TOKEN=$(kubectl get secret $VAULT_SA_NAME -o jsonpath="{.data.token}" | base64 --decode; echo)
+export SA_CA_CRT=$(kubectl get secret $VAULT_SA_NAME -o jsonpath="{.data['ca\.crt']}" | base64 --decode; echo)
+export K8S_HOST=$(kubectl cluster-info | grep 'master' | awk '{print $NF}'  | sed 's/\x1b\[[0-9;]*m//g')
+~~~
+здесь  sed ’s/\x1b\[[0-9;]*m//g убирает colour из вывода
+
+11) Запишем конфиг в vault
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault write auth/kubernetes/config \
+> token_reviewer_jwt="$SA_JWT_TOKEN" \
+> kubernetes_host="$K8S_HOST" \
+> kubernetes_ca_cert="$SA_CRT"
+Success! Data written to: auth/kubernetes/config
+~~~
+
+12) Создадим файл политики: kubernetes-vault/otus-policy.hcl
+
+13) создадим политку и роль в vault
+
+~~~sh
+$ kubectl cp ./otus-policy.hcl vault-0:/tmp
+$ kubectl exec -it vault-0 -- vault policy write otus-policy /tmp/otus-policy.hcl
+Success! Uploaded policy: otus-policy
+$ kubectl exec -it vault-0 -- vault write auth/kubernetes/role/otus \
+> bound_service_account_names=vault-auth \
+> bound_service_account_namespaces=default policies=otus-policy ttl=24h
+Success! Data written to: auth/kubernetes/role/otus
+~~~
+
+14) Проверим как работает авторизация
+
+Создадим под с привязанным сервис аккоунтом и установим туда сurl и jq.
+
+~~~sh
+$ kubectl run --generator=run-pod/v1 tmp  -i --tty --serviceaccount=vault-auth --image alpine:3.7
+If you don't see a command prompt, try pressing enter.
+/ # apk add curl jq
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.7/main/x86_64/APKINDEX.tar.gz
+fetch http://dl-cdn.alpinelinux.org/alpine/v3.7/community/x86_64/APKINDEX.tar.gz
+(1/6) Installing ca-certificates (20190108-r0)
+(2/6) Installing libssh2 (1.9.0-r1)
+(3/6) Installing libcurl (7.61.1-r3)
+(4/6) Installing curl (7.61.1-r3)
+(5/6) Installing oniguruma (6.6.1-r0)
+(6/6) Installing jq (1.5-r5)
+Executing busybox-1.27.2-r11.trigger
+Executing ca-certificates-20190108-r0.trigger
+OK: 7 MiB in 19 packages
+# VAULT_ADDR=http://vault:8200
+# KUBE_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+# TOKEN=$(curl -k -s --request POST --data '{"jwt": "'$KUBE_TOKEN'", "role": "otus"}' $VAULT_ADDR/v1/auth/kubernetes/login | jq '.auth.client_token' | awk -F\" '{print $2}')
+# curl --header "X-Vault-Token:s.hLQcWdB0klvseyirTMWcVbX1" $VAULT_ADDR/v1/otus/otus-ro/config
+{"request_id":"e535f59d-fe50-8a4b-3b04-b3b4f98328cb","lease_id":"","renewable":false,"lease_duration":2764800,"data":{"username":"otus"},"wrap_info":null,"warnings":null,"auth":null}
+/ # curl --header "X-Vault-Token:$TOKEN" $VAULT_ADDR/v1/otus/otus-rw/config
+{"request_id":"3459a80c-5ca9-ded0-7268-8ee3809ea905","lease_id":"","renewable":false,"lease_duration":2764800,"data":{"username":"otus"},"wrap_info":null,"warnings":null,"auth":null}
+# curl --header "X-Vault-Token:$TOKEN"  --request POST --data '{"bar": "baz"}' $VAULT_ADDR/v1/otus/otus-rw/config
+{"errors":["1 error occurred:\n\t* permission denied\n\n"]}
+/ # curl --header "X-Vault-Token:$TOKEN"  --request POST --data '{"bar": "baz"}' $VAULT_ADDR/v1/otus/otus-ro/config
+{"errors":["1 error occurred:\n\t* permission denied\n\n"]}
+/ # curl --header "X-Vault-Token:$TOKEN"  --request POST --data '{"bar": "baz"}' $VAULT_ADDR/v1/otus/otus-rw/config1
+/ # curl --header "X-Vault-Token:$TOKEN" $VAULT_ADDR/v1/otus/otus-rw/config1
+{"request_id":"ca7b7654-ad64-7246-ab41-6d7a47548968","lease_id":"","renewable":false,"lease_duration":2764800,"data":{"bar":"baz"},"wrap_info":null,"warnings":null,"auth":null}
+~~~
+
+
+  - используя свой клиентский token мы смогли читать созданные ранее секреты
+Почему мы смогли записать otus-rw/config1 но не смогли otusrw/config?
+  - $VAULT_ADDR/v1/otus/otus-ro/config - только для чтения
+  - $VAULT_ADDR/v1/otus/otus-rw/config - у нас отсутствует capability "update"
+  - $VAULT_ADDR/v1/otus/otus-rw/config1 - capability "create" у нас есть
+
+15) Пример с nginx. В kubernetes-vault/configs-k8s - скорректированные конфиги с учетом созданных 
+    ранее ролей и секретов.
+
+- Авторизуемся через vault-agent и получим клиентский токен
+- Через consul-template достанем секрет и положим его в nginx
+- Итог - nginx получил секрет из волта, не зная ничего про волт
+
+~~~sh
+$ kubectl describe pod vault-agent-example
+......
+Events:
+  Type     Reason       Age   From                                          Message
+  ----     ------       ----  ----                                          -------
+  Normal   Scheduled    31s   default-scheduler                             Successfully assigned default/vault-agent-example to gke-omega-ladoga-pool-f5273cef-gef0
+  Warning  FailedMount  30s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  MountVolume.SetUp failed for volume "vault-auth-token-pkftx" : failed to sync secret cache: timed out waiting for the condition
+  Normal   Pulling      29s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Pulling image "vault"
+  Normal   Pulled       24s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Successfully pulled image "vault"
+  Normal   Created      23s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Created container vault-agent
+  Normal   Started      23s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Started container vault-agent
+  Normal   Pulling      20s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Pulling image "nginx"
+  Normal   Pulled       16s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Successfully pulled image "nginx"
+  Normal   Created      15s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Created container nginx-container
+  Normal   Started      15s   kubelet, gke-omega-ladoga-pool-f5273cef-gef0  Started container nginx-container
+
+$ kubectl exec -it vault-agent-example -- sh
+# bash
+root@vault-agent-example:/# cd /usr/
+bin/     games/   include/ lib/     local/   sbin/    share/   src/
+root@vault-agent-example:/# cd /usr/share/
+X11/             bash-completion/ debconf/         doc-base/        gcc-8/           keyrings/        man/             pam/             polkit-1/        terminfo/
+adduser/         bug/             debianutils/     dpkg/            gdb/             libc-bin/        menu/            pam-configs/     readline/        xml/
+base-files/      ca-certificates/ dict/            fontconfig/      info/            lintian/         misc/            perl5/           sensible-utils/  zoneinfo/
+base-passwd/     common-licenses/ doc/             fonts/           java/            locale/          nginx/           pixmaps/         tabset/          zsh/
+root@vault-agent-example:/# vi /usr/share/nginx/html/index.html
+bash: vi: command not found
+root@vault-agent-example:/# cat /usr/share/nginx/html/index.html
+<html>
+<body>
+<p>Some secrets:</p>
+<ul>
+<li><pre>username: otus</pre></li>
+<li><pre>password: <no value></pre></li>
+</ul>
+
+</body>
+</html>
+~~~
+16) создадим CA на базе vault
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault secrets enable pki
+Success! Enabled the pki secrets engine at: pki/
+$ kubectl exec -it vault-0 -- vault secrets tune -max-lease-ttl=87600h pki
+Success! Tuned the secrets engine at: pki/
+$ kubectl exec -it vault-0 -- vault write -field=certificate pki/root/generate/internal common_name="exmaple.ru" ttl=87600h > CA_cert.crt
+~~~
+
+17) пропишем урлы для ca и отозванных сертификатов
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault write pki/config/urls \
+> issuing_certificates="http://vault:8200/v1/pki/ca" \
+> crl_distribution_points="http://vault:8200/v1/pki/crl"
+Success! Data written to: pki/config/urls
+~~~
+
+18) создадим промежуточный сертификат
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault write -format=json pki_int/intermediate/generate/internal common_name="example.ru Intermediate Authority" | jq -r '.data.csr' > pki_intermediate.csr
+$ ls
+CA_cert.crt  configs-k8s  consul-helm  infra  otus-policy.hcl  pki_intermediate.csr  README.md  vault-auth-service-account.yml  vault-guides  vault-helm
+$
+~~~
+
+19) пропишем промежуточный сертификат в vault
+
+~~~sh
+$ kubectl cp pki_intermediate.csr vault-0:./tmp
+$ kubectl exec -it vault-0 -- vault write -format=json pki/root/sign-intermediate csr=@/tmp/pki_intermediate.csr format=pem_bundle ttl="43800h" | jq -r '.data.certificate' > intermediate.cert.pem
+$ ls
+CA_cert.crt  configs-k8s  consul-helm  infra  intermediate.cert.pem  otus-policy.hcl  pki_intermediate.csr  README.md  vault-auth-service-account.yml  vault-guides  vault-helm
+$ cp intermediate.cert.pem vault-0:./tmp
+$ kubectl exec -it vault-0 -- vault write pki_int/intermediate/set-signed certificate=@/tmp/intermediate.cert.pem
+Success! Data written to: pki_int/intermediate/set-signed
+~~~
+
+20) Создадим и отзовем новые сертификаты
+
+- Создадим роль для выдачи сертификатов
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault write pki_int/roles/example-dot-ru \
+> allowed_domains="example.ru" allow_subdomains=true max_ttl="720h"
+Success! Data written to: pki_int/roles/example-dot-ru
+~~~
+
+- Создадим сертификат
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault write pki_int/issue/example-dot-ru common_name="devlab.example.ru" ttl="24h"
+Key                 Value
+---                 -----
+ca_chain            [-----BEGIN CERTIFICATE-----
+MIIDnDCCAoSgAwIBAgIUVeVDmhfWpRva6V5A1Jt7WmKWkIQwDQYJKoZIhvcNAQEL
+BQAwFTETMBEGA1UEAxMKZXhtYXBsZS5ydTAeFw0yMTA1MjIyMDM4NDdaFw0yNjA1
+MjEyMDM5MTdaMCwxKjAoBgNVBAMTIWV4YW1wbGUucnUgSW50ZXJtZWRpYXRlIEF1
+dGhvcml0eTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMcNjPh4WrnN
+c9MdUa+0jKGMA2Koxr+RKL7cSyr0Me8AV8oW9xtaX1U1RZFDLey3gQMY7QijYX89
+96DIALcdMeo67WZEzbsfkYU9v/CP2Y+7QVfZZeYlVL2zKSWU1Huk3a1gcXs0sfGw
+SZRusixEOmnFr3BYIq2s2XONQE9yqsfEtGD2TX6UY+D71BAoxfN7expBNCkA+Xa1
+Z41nG4p4doOPPTb32lAGnSL/WL0JFB3KgWSx8LDe7YoK2wz7Q/G9TqZwLFbMsnr7
+MdXtQCOQeVBCIFqazvGBMAvk67bcA80tRJSeSbvPCFcaCpJ3YaVk5FD3DF1Z4zLd
+H63MEbLmLJcCAwEAAaOBzDCByTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw
+AwEB/zAdBgNVHQ4EFgQUjKII0fShOAB+MZSQY3STR5PvXqcwHwYDVR0jBBgwFoAU
+iKrnRdprRNe+hqE44CnSHSOusuAwNwYIKwYBBQUHAQEEKzApMCcGCCsGAQUFBzAC
+hhtodHRwOi8vdmF1bHQ6ODIwMC92MS9wa2kvY2EwLQYDVR0fBCYwJDAioCCgHoYc
+aHR0cDovL3ZhdWx0OjgyMDAvdjEvcGtpL2NybDANBgkqhkiG9w0BAQsFAAOCAQEA
+t9/InZ6zXQQu1nLqlXJaUf3iwnc+rjcxP09ZEmMFqwyRC4Cir3EKeZXAqff/iGQt
+5rkmhbKU1W5nnIbps8oINcpt0T/13Yt4tNlhh1Ib1Wt2RHt/O2zThAzMbyNK5u2x
+eAQ2MeQQ9Tzxj5XuHK+CnBPCFYbxCYygkxPPgRgkIJ1RWTbKjJFgBX1sNfgOkBFr
+5+ovWfEHRauqb6hzYocTKxqAuki44tIN1m7Z0ADQ1Xh8a2mUoTguh89nBOqZpLcD
+flwbTqKeJcwvhLdaMJ+eNHOl3XZxaF6N5grnM2To9fDVVfymGOKSueO76rmV6MLV
+GrA/r5/QCSYmtir8Z8l2TQ==
+-----END CERTIFICATE-----]
+certificate         -----BEGIN CERTIFICATE-----
+MIIDZzCCAk+gAwIBAgIUJ1jxEszpVnq5ZwEXAfB2YjDZv/owDQYJKoZIhvcNAQEL
+BQAwLDEqMCgGA1UEAxMhZXhhbXBsZS5ydSBJbnRlcm1lZGlhdGUgQXV0aG9yaXR5
+MB4XDTIxMDUyMjIxMjA0N1oXDTIxMDUyMzIxMjExN1owHDEaMBgGA1UEAxMRZGV2
+bGFiLmV4YW1wbGUucnUwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCw
+3DPTZ+Wwi+KjuTDSxX16s8TEN+YCsm/AAPK/pIi8XSk7HG0UIJjKHavBZJTtzs55
+rxjwKANl4mmGaplmZaqn1jXRPHjrXcckJOR5j9JMa56HH+5Z80gE+syrswbC+Gy0
+uL8OV0o4xR3ZYoJArn3XsetLDhKPeUOMjcxwJ//d+TbkHQQTzni9aNAyUiF5xOms
+r30aX9SZLgtxwRgTrdxEpgEWrv3AcwBtTiywIhl0fK11Yn7CN8EqpxS32Pa/IkUh
+aKkTs1lZG1mr4sopfc13hnDqF+K9ZoT9dCdEgQbMOh5D8Aye6EI0Z8iCmni7k7CS
+1lyiiiUABaF/QZ3CNkLvAgMBAAGjgZAwgY0wDgYDVR0PAQH/BAQDAgOoMB0GA1Ud
+JQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjAdBgNVHQ4EFgQUaY4Zzxe1ZzAD3kw+
+zKmVq5nXQGswHwYDVR0jBBgwFoAUjKII0fShOAB+MZSQY3STR5PvXqcwHAYDVR0R
+BBUwE4IRZGV2bGFiLmV4YW1wbGUucnUwDQYJKoZIhvcNAQELBQADggEBAG5z5pCt
+qBu9hGKdH0petEAj0lvKb+RUv+Tj3FgFTVbNNIfwOA5pTXnZDKWhDS5zgj5pNuBp
+TfkntrJJSYWOff+xBeEJZ3MpyAfwp3HDKyX1BdoSRYavCXcV5x5V8/0YH3O6pr0w
+UZwadOOkimTZXj3jh83F1kb0qQ6n/PGx1pVcw/TBDwhZnlXyfuCN2S8QUDpeKrY5
+Efd1p5tSc6hFGBZQGmKVCB2ouPRR0uIkSAYBC+XpmnHKP1hDEq8sipX81SYlPbf/
+hou9Dn84qG5CaEl+IJKRg0ic4nR79ruNnTT8ywn0oPVxJmH8xF6hDGMh+Zou0hHm
+qiT8D+ZWD55Ks0Q=
+-----END CERTIFICATE-----
+expiration          1621804877
+issuing_ca          -----BEGIN CERTIFICATE-----
+MIIDnDCCAoSgAwIBAgIUVeVDmhfWpRva6V5A1Jt7WmKWkIQwDQYJKoZIhvcNAQEL
+BQAwFTETMBEGA1UEAxMKZXhtYXBsZS5ydTAeFw0yMTA1MjIyMDM4NDdaFw0yNjA1
+MjEyMDM5MTdaMCwxKjAoBgNVBAMTIWV4YW1wbGUucnUgSW50ZXJtZWRpYXRlIEF1
+dGhvcml0eTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAMcNjPh4WrnN
+c9MdUa+0jKGMA2Koxr+RKL7cSyr0Me8AV8oW9xtaX1U1RZFDLey3gQMY7QijYX89
+96DIALcdMeo67WZEzbsfkYU9v/CP2Y+7QVfZZeYlVL2zKSWU1Huk3a1gcXs0sfGw
+SZRusixEOmnFr3BYIq2s2XONQE9yqsfEtGD2TX6UY+D71BAoxfN7expBNCkA+Xa1
+Z41nG4p4doOPPTb32lAGnSL/WL0JFB3KgWSx8LDe7YoK2wz7Q/G9TqZwLFbMsnr7
+MdXtQCOQeVBCIFqazvGBMAvk67bcA80tRJSeSbvPCFcaCpJ3YaVk5FD3DF1Z4zLd
+H63MEbLmLJcCAwEAAaOBzDCByTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw
+AwEB/zAdBgNVHQ4EFgQUjKII0fShOAB+MZSQY3STR5PvXqcwHwYDVR0jBBgwFoAU
+iKrnRdprRNe+hqE44CnSHSOusuAwNwYIKwYBBQUHAQEEKzApMCcGCCsGAQUFBzAC
+hhtodHRwOi8vdmF1bHQ6ODIwMC92MS9wa2kvY2EwLQYDVR0fBCYwJDAioCCgHoYc
+aHR0cDovL3ZhdWx0OjgyMDAvdjEvcGtpL2NybDANBgkqhkiG9w0BAQsFAAOCAQEA
+t9/InZ6zXQQu1nLqlXJaUf3iwnc+rjcxP09ZEmMFqwyRC4Cir3EKeZXAqff/iGQt
+5rkmhbKU1W5nnIbps8oINcpt0T/13Yt4tNlhh1Ib1Wt2RHt/O2zThAzMbyNK5u2x
+eAQ2MeQQ9Tzxj5XuHK+CnBPCFYbxCYygkxPPgRgkIJ1RWTbKjJFgBX1sNfgOkBFr
+5+ovWfEHRauqb6hzYocTKxqAuki44tIN1m7Z0ADQ1Xh8a2mUoTguh89nBOqZpLcD
+flwbTqKeJcwvhLdaMJ+eNHOl3XZxaF6N5grnM2To9fDVVfymGOKSueO76rmV6MLV
+GrA/r5/QCSYmtir8Z8l2TQ==
+-----END CERTIFICATE-----
+private_key         -----BEGIN RSA PRIVATE KEY-----
+MIIEowIBAAKCAQEAsNwz02flsIvio7kw0sV9erPExDfmArJvwADyv6SIvF0pOxxt
+FCCYyh2rwWSU7c7Oea8Y8CgDZeJphmqZZmWqp9Y10Tx4613HJCTkeY/STGuehx/u
+WfNIBPrMq7MGwvhstLi/DldKOMUd2WKCQK5917HrSw4Sj3lDjI3McCf/3fk25B0E
+E854vWjQMlIhecTprK99Gl/UmS4LccEYE63cRKYBFq79wHMAbU4ssCIZdHytdWJ+
+wjfBKqcUt9j2vyJFIWipE7NZWRtZq+LKKX3Nd4Zw6hfivWaE/XQnRIEGzDoeQ/AM
+nuhCNGfIgpp4u5OwktZcooolAAWhf0GdwjZC7wIDAQABAoIBAGs1YJkjHwHxGfaj
+OOxbWN/7fyhuthgmcEVUjdIL+/MrCeZSKfEMfXHvoID/5qNtPI5YzOYvazfkkpEv
+p0OCF3vcBw2J+ca7Nw866eCihRlcF2HTwll2ds7F9TGTuWKQ0tyOLQqVcWGOY7S1
+2T06SQBqUrZRloCwQnk+L5JBPQIhoD7od8AyKL61ZN7GoseihMp4nMYgdBMyFgQt
+jjMH21LFGDkjqVtllwkKf2fONVoMayN9a/vPIKZFX0tDckMb7EoI/oQbCaw3xiC0
+iJOlVbO9olIN8Bk0Dg051+uR9VxwGvc2q2qEjlk0CA4qc1AexKe55qjFbKCCrD9J
+PEgJF1ECgYEAxk0zWi0sKjw9E2qgEZTtm8lsmkDSy8IB5rdVgu7nxWEiJNYPJuaN
+Kbve9YAO8GZxCWeg3mMa33jF6NxnPtzIbNGf5gjYPoN+mQgk5rrJTm1KtOzFn9im
+geTkaLX517fwPJV7k9QIX9JzKa6Z5w9zKtQYh4oW1Oc3M/soHvPjuTcCgYEA5FHn
+8Fro5p2WgQYgxcReLjJBY7mCjimLd8hwTBJTBf65rjcTPB/XUvLEOmbBJzxq9yZC
+WtOc4cNeT00rU8rurdOm6h/fYOyH2jm/NSW755LgMnvDcUAp0hMkjeOfIVNDOpFS
+9y1Ta1aNvz8cXYLYrGstyaI/ezu7FaPExc3RQAkCgYAeSchgK6olQVIq1wxf4xlv
+xBI8dU49JQLZVINRHmB0O2PVsIRb8rb4+uMRKGAfw+XcA+IEVarTG0VPTerPJTXP
+uSztG8i7s6XwhdftDfaVbggNHmUJBzRXfriMbc8dbdDZ0BMx/x7QU/qXET4clrWG
+gyLEAQl/t1ktLV1xbNsJfQKBgBCo4VGqcIATU54Kgm2rzGt2g0rxiFMzONf+qiMC
+20f+tDHAFwk2EZId4K+aO9HPGMb75a+W7UWT6dfDe7vbfNr2LKG8vaHm4GrN9+O6
+4yEcmHtWiIZE9kg72Vj5GO1nk+o8HF+o0QNuB13DDyDLoV/DWk3yJsupKheEIaGF
+SRVxAoGBAL9qNfmAhJ/pdBp0m7l7IMjlI3UhMB+2uzaVGnjA1XELuWr5DBRkHew6
+Tyf1Q9Ps6NwmQhpmiEyDBBvFjiSwOpWa50Pc1fdUdr8b6mQEnCSUKf67i2joVntU
+rgO1BR/ncNUrdiXL7UaAiGJ4dpDSoemde6flxwrBLhBg+2WtzQBl
+-----END RSA PRIVATE KEY-----
+private_key_type    rsa
+serial_number       27:58:f1:12:cc:e9:56:7a:b9:67:01:17:01:f0:76:62:30:d9:bf:fa
+~~~
+
+- отзовем сертификат
+
+~~~sh
+$ kubectl exec -it vault-0 -- vault write pki_int/revoke serial_number="27:58:f1:12:cc:e9:56:7a:b9:67:01:17:01:f0:76:62:30:d9:bf:fa"
+Key                        Value
+---                        -----
+revocation_time            1621718750
+revocation_time_rfc3339    2021-05-22T21:25:50.84532575Z
+~~~ 
+
+</details>

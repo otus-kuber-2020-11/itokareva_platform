@@ -5,3 +5,6 @@ terraform.tfvars
 terraform.tfstate.backup
 backend.ttf
 kubespray/
+consul-helm/
+vault-helm/
+vault-guides/
